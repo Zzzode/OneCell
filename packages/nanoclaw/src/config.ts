@@ -1,7 +1,10 @@
 import path from 'path';
 
 import { readEnvFile } from './env.js';
-import { loadConfigFile, type ResolvedNanoclawConfig } from './config-loader.js';
+import {
+  loadConfigFile,
+} from './config-loader.js';
+import type { ResolvedNanoclawConfig } from './nanoclaw-config.js';
 import { resolveShadowExecutionMode } from './shadow-execution.js';
 import { isValidTimezone } from './timezone.js';
 
@@ -22,6 +25,8 @@ export function initConfig(configPath: string): ResolvedNanoclawConfig {
   TERMINAL_CHANNEL_ENABLED = _appConfig.profile === 'terminal';
   TERMINAL_GROUP_EXECUTION_MODE = _appConfig.executionMode;
 
+  EDGE_RUNNER_PROVIDER = _appConfig.edgeProvider.type;
+
   // Backward-compat provider exports derived from the resolved config.
   EDGE_ANTHROPIC_API_KEY = _appConfig.edgeProvider.apiKey ?? undefined;
   EDGE_ANTHROPIC_API_BASE_URL = _appConfig.edgeProvider.baseUrl ?? undefined;
@@ -39,7 +44,8 @@ export function initConfig(configPath: string): ResolvedNanoclawConfig {
 }
 
 export function getAppConfig(): ResolvedNanoclawConfig {
-  if (!_appConfig) throw new Error('Config not initialized. Call initConfig() first.');
+  if (!_appConfig)
+    throw new Error('Config not initialized. Call initConfig() first.');
   return _appConfig;
 }
 
@@ -168,7 +174,8 @@ export let EDGE_RUNNER_MODE: string = 'edgejs';
 export let EDGE_ENABLE_TOOLS: boolean = true;
 export let EDGE_DISABLE_FALLBACK: boolean = false;
 export let TERMINAL_CHANNEL_ENABLED: boolean = true;
-export let TERMINAL_GROUP_EXECUTION_MODE: 'edge' | 'container' | 'auto' = 'edge';
+export let TERMINAL_GROUP_EXECUTION_MODE: 'edge' | 'container' | 'auto' =
+  'edge';
 
 // ---------------------------------------------------------------------------
 // Backward-compat provider exports — set by initConfig()
@@ -177,6 +184,7 @@ export let TERMINAL_GROUP_EXECUTION_MODE: 'edge' | 'container' | 'auto' = 'edge'
 // migrated to read from getAppConfig() directly.
 // ---------------------------------------------------------------------------
 
+export let EDGE_RUNNER_PROVIDER: string = 'local';
 export let EDGE_ANTHROPIC_API_KEY: string | undefined = undefined;
 export let EDGE_ANTHROPIC_API_BASE_URL: string | undefined = undefined;
 export let EDGE_ANTHROPIC_MODEL: string | undefined = undefined;
