@@ -330,9 +330,15 @@ function buildExecutionRequest(
     },
     runner: {
       provider: config.edgeProvider.type,
-      ...(config.edgeProvider.baseUrl ? { apiBaseUrl: config.edgeProvider.baseUrl } : {}),
-      ...(config.edgeProvider.apiKey ? { apiKey: config.edgeProvider.apiKey } : {}),
-      ...(config.edgeProvider.model ? { model: config.edgeProvider.model } : {}),
+      ...(config.edgeProvider.baseUrl
+        ? { apiBaseUrl: config.edgeProvider.baseUrl }
+        : {}),
+      ...(config.edgeProvider.apiKey
+        ? { apiKey: config.edgeProvider.apiKey }
+        : {}),
+      ...(config.edgeProvider.model
+        ? { model: config.edgeProvider.model }
+        : {}),
     },
     policy: {
       allowedTools,
