@@ -42,4 +42,18 @@ describe('policy router', () => {
       'interactive.longlived',
     ]);
   });
+
+  it('routes to edge when container is not available', () => {
+    expect(
+      routeTaskNode(
+        undefined,
+        { prompt: 'hello', script: 'echo 1' },
+        'auto',
+        false, // containerAvailable
+      ),
+    ).toMatchObject({
+      backendId: 'edge',
+      fallbackEligible: false,
+    });
+  });
 });

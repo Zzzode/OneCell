@@ -34,8 +34,9 @@ export function selectAgentBackend(
   group: Pick<RegisteredGroup, 'executionMode'> | undefined,
   input: Pick<AgentRunInput, 'script' | 'prompt'>,
   defaultExecutionMode: ExecutionMode,
+  containerAvailable: boolean = true,
 ): BackendSelection {
-  return routeTaskNode(group, input, defaultExecutionMode);
+  return routeTaskNode(group, input, defaultExecutionMode, containerAvailable);
 }
 
 export function groupMayUseContainerRuntime(
@@ -50,7 +51,12 @@ export function groupMayUseContainerRuntime(
 export function deploymentRequiresContainerRuntime(
   groups: ReadonlyArray<Pick<RegisteredGroup, 'executionMode'>>,
   defaultExecutionMode: ExecutionMode,
+  containerAvailable: boolean = true,
 ): boolean {
+  if (!containerAvailable) {
+    return false;
+  }
+
   if (defaultExecutionMode !== 'edge') {
     return true;
   }
