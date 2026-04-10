@@ -29,7 +29,11 @@ export function loadConfigFile(configPath: string): ResolvedNanoclawConfig {
   try {
     raw = fs.readFileSync(configPath, 'utf-8');
   } catch (err: unknown) {
-    if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (
+      err instanceof Error &&
+      'code' in err &&
+      (err as NodeJS.ErrnoException).code === 'ENOENT'
+    ) {
       throw new Error(`Config file not found: ${configPath}`);
     }
     throw err;

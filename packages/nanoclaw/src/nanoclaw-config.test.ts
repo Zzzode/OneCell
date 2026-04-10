@@ -117,7 +117,9 @@ describe('validateConfigFile', () => {
       },
       edge: { provider: 'nonexistent' },
     };
-    expect(() => validateConfigFile(config)).toThrow(/edge\.provider.*nonexistent/i);
+    expect(() => validateConfigFile(config)).toThrow(
+      /edge\.provider.*nonexistent/i,
+    );
   });
 
   it('rejects container.provider referencing non-existent provider', () => {
@@ -226,7 +228,11 @@ describe('resolveConfig', () => {
       providers: {
         anthropic: { type: 'anthropic', apiKey: 'sk-test' },
       },
-      edge: { enableTools: false, disableFallback: true, provider: 'anthropic' },
+      edge: {
+        enableTools: false,
+        disableFallback: true,
+        provider: 'anthropic',
+      },
       container: { maxConcurrent: 10, provider: 'anthropic' },
     };
     const resolved = resolveConfig(config);

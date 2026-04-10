@@ -4,7 +4,11 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RegisteredGroup } from './types.js';
-import { cleanupTestConfig, initTestConfig, writeTestConfigFile } from './test-config.js';
+import {
+  cleanupTestConfig,
+  initTestConfig,
+  writeTestConfigFile,
+} from './test-config.js';
 
 const group: RegisteredGroup = {
   name: 'Edge Group',

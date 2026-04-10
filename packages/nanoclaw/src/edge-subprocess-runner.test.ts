@@ -9,7 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRunInput } from './agent-backend.js';
 import type { RegisteredGroup } from './types.js';
-import { cleanupTestConfig, initTestConfig, writeTestConfigFile } from './test-config.js';
+import {
+  cleanupTestConfig,
+  initTestConfig,
+  writeTestConfigFile,
+} from './test-config.js';
 
 const group: RegisteredGroup = {
   name: 'Edge Group',
@@ -115,76 +119,82 @@ describe('EdgeSubprocessRunner', () => {
     }
   });
 
-  it('routes openai-compatible provider requests through the host bridge', { timeout: 30000 }, async () => {
-    vi.stubEnv('EDGE_RUNNER_PROVIDER', 'openai');
-    vi.stubEnv('EDGE_API_BASE_URL', 'https://provider.example/v1');
-    vi.stubEnv('EDGE_API_KEY', 'test-key');
-    vi.stubEnv('EDGE_MODEL', 'glm-5');
-    vi.resetModules();
+  it(
+    'routes openai-compatible provider requests through the host bridge',
+    { timeout: 30000 },
+    async () => {
+      vi.stubEnv('EDGE_RUNNER_PROVIDER', 'openai');
+      vi.stubEnv('EDGE_API_BASE_URL', 'https://provider.example/v1');
+      vi.stubEnv('EDGE_API_KEY', 'test-key');
+      vi.stubEnv('EDGE_MODEL', 'glm-5');
+      vi.resetModules();
 
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                content:
-                  '你好，我是通过 host bridge 请求到的真实 provider 响应。',
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content:
+                    '你好，我是通过 host bridge 请求到的真实 provider 响应。',
+                },
               },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+
+      const [
+        { initDatabase },
+        { initConfig: freshInitConfig },
+        { createSubprocessEdgeRunner },
+        { createEdgeBackend },
+      ] = await Promise.all([
+        import('./db.js'),
+        import('./config.js'),
+        import('./edge-subprocess-runner.js'),
+        import('./backends/edge-backend.js'),
+      ]);
+
+      initDatabase();
+      freshInitConfig(
+        writeTestConfigFile({
+          providers: {
+            testanthropic: {
+              type: 'anthropic',
+              apiKey: 'test-anthropic-key',
+              model: 'claude-sonnet-4-20250514',
             },
-          ],
+            testopenai: {
+              type: 'openai',
+              apiKey: 'test-key',
+              baseUrl: 'https://provider.example/v1',
+              model: 'glm-5',
+            },
+            testlocal: { type: 'local' },
+          },
+          edge: { provider: 'testopenai' },
         }),
-        { status: 200 },
-      ),
-    );
+      );
+      const backend = createEdgeBackend(createSubprocessEdgeRunner());
 
-    const [
-      { initDatabase },
-      { initConfig: freshInitConfig },
-      { createSubprocessEdgeRunner },
-      { createEdgeBackend },
-    ] = await Promise.all([
-      import('./db.js'),
-      import('./config.js'),
-      import('./edge-subprocess-runner.js'),
-      import('./backends/edge-backend.js'),
-    ]);
+      const result = await backend.run(group, input);
 
-    initDatabase();
-    freshInitConfig(writeTestConfigFile({
-      providers: {
-        testanthropic: {
-          type: 'anthropic',
-          apiKey: 'test-anthropic-key',
-          model: 'claude-sonnet-4-20250514',
-        },
-        testopenai: {
-          type: 'openai',
-          apiKey: 'test-key',
-          baseUrl: 'https://provider.example/v1',
-          model: 'glm-5',
-        },
-        testlocal: { type: 'local' },
-      },
-      edge: { provider: 'testopenai' },
-    }));
-    const backend = createEdgeBackend(createSubprocessEdgeRunner());
-
-    const result = await backend.run(group, input);
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://provider.example/v1/chat/completions',
-      expect.objectContaining({
-        method: 'POST',
-      }),
-    );
-    expect(result).toMatchObject({
-      status: 'success',
-      result: '你好，我是通过 host bridge 请求到的真实 provider 响应。',
-      newSessionId: 'edge-session:group:edge-group',
-    });
-  });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://provider.example/v1/chat/completions',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      );
+      expect(result).toMatchObject({
+        status: 'success',
+        result: '你好，我是通过 host bridge 请求到的真实 provider 响应。',
+        newSessionId: 'edge-session:group:edge-group',
+      });
+    },
+  );
 
   // Removed: 'limits first-turn visible tools to the explicitly requested tool' test
   // detectExplicitToolChoice was removed. Tool selection now relies on model native tool_choice='auto'.

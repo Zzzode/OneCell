@@ -4,14 +4,21 @@ import * as path from 'node:path';
 
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { loadConfigFile, loadConfigFromArgv, resolveConfigPath } from './config-loader.js';
+import {
+  loadConfigFile,
+  loadConfigFromArgv,
+  resolveConfigPath,
+} from './config-loader.js';
 
 import type { ResolvedNanoclawConfig } from './nanoclaw-config.js';
 
 const tempFiles: string[] = [];
 
 function writeTempFile(filename: string, content: string): string {
-  const filePath = path.join(os.tmpdir(), `nanoclaw-test-${Date.now()}-${filename}`);
+  const filePath = path.join(
+    os.tmpdir(),
+    `nanoclaw-test-${Date.now()}-${filename}`,
+  );
   fs.writeFileSync(filePath, content, 'utf-8');
   tempFiles.push(filePath);
   return filePath;
@@ -29,7 +36,12 @@ afterAll(() => {
 
 describe('resolveConfigPath', () => {
   it('returns the value after --config when provided', () => {
-    const argv = ['node', 'script.js', '--config', '/custom/path/to/config.json'];
+    const argv = [
+      'node',
+      'script.js',
+      '--config',
+      '/custom/path/to/config.json',
+    ];
     expect(resolveConfigPath(argv)).toBe('/custom/path/to/config.json');
   });
 
@@ -80,7 +92,10 @@ describe('loadConfigFile', () => {
       'envvar.json',
       JSON.stringify({
         providers: {
-          anthropic: { type: 'anthropic', apiKey: '${NANOCLAW_LOADER_TEST_KEY}' },
+          anthropic: {
+            type: 'anthropic',
+            apiKey: '${NANOCLAW_LOADER_TEST_KEY}',
+          },
         },
       }),
     );
@@ -92,8 +107,13 @@ describe('loadConfigFile', () => {
   });
 
   it('throws a descriptive error for missing file', () => {
-    const missingPath = path.join(os.tmpdir(), `nanoclaw-missing-${Date.now()}.json`);
-    expect(() => loadConfigFile(missingPath)).toThrow(/not found|does not exist|ENOENT|no such file/i);
+    const missingPath = path.join(
+      os.tmpdir(),
+      `nanoclaw-missing-${Date.now()}.json`,
+    );
+    expect(() => loadConfigFile(missingPath)).toThrow(
+      /not found|does not exist|ENOENT|no such file/i,
+    );
   });
 
   it('throws a descriptive error for invalid JSON', () => {
@@ -102,7 +122,10 @@ describe('loadConfigFile', () => {
   });
 
   it('throws a descriptive error for valid JSON that is not a valid config', () => {
-    const configPath = writeTempFile('badconfig.json', JSON.stringify({ providers: {} }));
+    const configPath = writeTempFile(
+      'badconfig.json',
+      JSON.stringify({ providers: {} }),
+    );
     expect(() => loadConfigFile(configPath)).toThrow(/at least one provider/i);
   });
 });

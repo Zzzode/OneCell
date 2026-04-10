@@ -71,15 +71,11 @@ export function validateConfigFile(config: NanoclawConfigFile): void {
 
   for (const [name, def] of Object.entries(config.providers)) {
     if (def.type !== 'local' && !def.apiKey) {
-      throw new Error(
-        `Provider "${name}" (${def.type}) requires an apiKey`,
-      );
+      throw new Error(`Provider "${name}" (${def.type}) requires an apiKey`);
     }
 
     if (def.type === 'openai' && !def.model) {
-      throw new Error(
-        `Provider "${name}" (openai) requires a model`,
-      );
+      throw new Error(`Provider "${name}" (openai) requires a model`);
     }
   }
 

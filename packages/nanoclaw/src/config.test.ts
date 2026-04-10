@@ -176,9 +176,7 @@ describe('config (new config system)', () => {
     });
     configDir = path.dirname(configPath);
 
-    expect(() => initConfig(configPath)).toThrow(
-      'at least one provider',
-    );
+    expect(() => initConfig(configPath)).toThrow('at least one provider');
   });
 
   it('initConfig expands env vars in provider apiKey', () => {

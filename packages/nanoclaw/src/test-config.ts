@@ -50,9 +50,7 @@ export function writeTestConfigFile(
     os.tmpdir(),
     `nanoclaw-test-config-${process.pid}.json`,
   );
-  const merged = overrides
-    ? { ...TEST_CONFIG, ...overrides }
-    : TEST_CONFIG;
+  const merged = overrides ? { ...TEST_CONFIG, ...overrides } : TEST_CONFIG;
   fs.writeFileSync(configPath, JSON.stringify(merged));
   return configPath;
 }
