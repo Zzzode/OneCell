@@ -1,0 +1,27 @@
+{
+  "profile": "claw",
+  "executionMode": "edge",
+  "edgeRunnerMode": "edgejs",
+  "providers": {
+    "anthropic": {
+      "type": "anthropic",
+      "apiKey": "${ANTHROPIC_API_KEY}",
+      "model": "claude-sonnet-4-20250514"
+    },
+    "openai": {
+      "type": "openai",
+      "apiKey": "${OPENAI_API_KEY}",
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "gpt-4o"
+    }
+  },
+  "edge": {
+    "provider": "anthropic",
+    "enableTools": true,
+    "disableFallback": false
+  },
+  "container": {
+    "provider": "anthropic",
+    "maxConcurrent": 5
+  }
+}
