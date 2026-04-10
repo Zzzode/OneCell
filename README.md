@@ -99,6 +99,18 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **OneCell Assistant** follows a skill-based contribution model — new capabilities are contributed as installable skills rather than merged into core. See [packages/nanoclaw/CONTRIBUTING.md](packages/nanoclaw/CONTRIBUTING.md) for details.
 
+## Acknowledgments
+
+### OneCell Runtime (`@onecell/edgejs`)
+
+OneCell Runtime is based on [wasmerio/edgejs](https://github.com/wasmerio/edgejs) — Wasmer's secure JavaScript runtime built on WebAssembly sandboxing. We thank the Wasmer team and Edge.js contributors for their foundational work.
+
+### OneCell Assistant (`@onecell/nanoclaw`)
+
+OneCell Assistant is based on [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw). We thank the Qwibit AI team and nanoclaw contributors for their work.
+
+We also thank all [nanoclaw contributors](packages/nanoclaw/CONTRIBUTORS.md) who have helped shape this project.
+
 ## License
 
 [Apache License 2.0](LICENSE)
