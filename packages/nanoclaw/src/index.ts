@@ -26,7 +26,8 @@ import {
   TERMINAL_RESET_SESSION_ON_START,
   TIMEZONE,
 } from './config.js';
-import './channels/index.js';
+import { initConfig, getAppConfig } from './config.js';
+import { resolveConfigPath } from './config-loader.js';
 import {
   getChannelFactory,
   getRegisteredChannelNames,
@@ -1251,6 +1252,13 @@ function ensureContainerSystemRunning(): void {
 }
 
 async function main(): Promise<void> {
+  const configPath = resolveConfigPath(process.argv);
+  initConfig(configPath);
+
+  // Dynamic channel loading — must happen after initConfig() so channels
+  // can call getAppConfig() during registration.
+  await import('./channels/index.js');
+
   initDatabase();
   logger.info('Database initialized');
   loadState();

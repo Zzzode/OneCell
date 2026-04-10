@@ -6,7 +6,6 @@ import {
   EDGE_MODEL,
   EDGE_RUNNER_MODE,
   EDGE_RUNNER_PROVIDER,
-  TERMINAL_CHANNEL_ENABLED,
   TERMINAL_GROUP_FOLDER,
   TERMINAL_GROUP_EXECUTION_MODE,
   TERMINAL_GROUP_JID,
@@ -91,7 +90,7 @@ function providerLabel(): string {
 
 function modelLabel(): string {
   if (EDGE_RUNNER_PROVIDER === 'anthropic') {
-    return EDGE_ANTHROPIC_MODEL;
+    return EDGE_ANTHROPIC_MODEL || 'default';
   }
   return EDGE_MODEL || 'default';
 }
@@ -914,6 +913,5 @@ export function emitTerminalSystemEvent(jid: string, text: string): void {
 }
 
 registerChannel('terminal', (opts) => {
-  if (!TERMINAL_CHANNEL_ENABLED) return null;
   return new TerminalChannel(opts);
 });
