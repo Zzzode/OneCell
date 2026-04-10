@@ -23,8 +23,13 @@ pnpm build:nanoclaw           # Build nanoclaw only (requires edgejs built first
 pnpm test                     # Run all tests
 
 # Direct CMake usage:
-cmake -S . -B build-edge -DCMAKE_BUILD_TYPE=Release
-cmake --build build-edge -j8
+cmake --preset release            # Configure release build
+cmake --build --preset release    # Build
+cmake --preset dev                # Configure debug build
+cmake --build --preset dev        # Build
+ctest --preset dev                # Run tests
+
+# Other presets: asan, coverage, wasix, release-shared-openssl
 ```
 
 ## Key Integration

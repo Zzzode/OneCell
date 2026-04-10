@@ -39,9 +39,9 @@ Or build from source (requires CMake >= 3.20, C++20 compiler):
 git clone https://github.com/Zzzode/onecell.git
 cd onecell
 git submodule update --init napi
-cmake -S . -B build-edge -DCMAKE_BUILD_TYPE=Release
-cmake --build build-edge -j8
-./build-edge/edge --version
+cmake --preset release
+cmake --build --preset release
+./build-release/edge --version
 ```
 
 ## Usage
@@ -113,9 +113,9 @@ git submodule update --init napi
 Build the CLI locally:
 
 ```bash
-cmake -S . -B build-edge -DCMAKE_BUILD_TYPE=Release
-cmake --build build-edge -j8
-./build-edge/edge server.js
+cmake --preset release
+cmake --build --preset release
+./build-release/edge server.js
 ```
 
 Run in dev mode:
@@ -127,9 +127,10 @@ Run in dev mode:
 Run tests:
 
 ```bash
-cmake --build build-edge -j8
-ctest --test-dir build-edge --output-on-failure
-cmake --build build-edge --target node-test
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
+cmake --build build-dev --target node-test
 ```
 ./test/nodejs_test_harness --category=node:assert
 ```

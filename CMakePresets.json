@@ -1,0 +1,108 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build-${presetName}",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Development",
+      "description": "Debug build with assertions, no optimizations",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Optimized native build with vendored OpenSSL",
+      "inherits": "base"
+    },
+    {
+      "name": "release-shared-openssl",
+      "displayName": "Release (shared OpenSSL)",
+      "description": "Optimized native build linked against system OpenSSL",
+      "inherits": "release",
+      "cacheVariables": {
+        "EDGE_SHARED_OPENSSL": "ON"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "Address Sanitizer",
+      "description": "Debug build with AddressSanitizer enabled",
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS_DEBUG": "-g -fsanitize=address -fno-omit-frame-pointer",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g -fsanitize=address -fno-omit-frame-pointer"
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Coverage",
+      "description": "Debug build with code coverage instrumentation",
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS_DEBUG": "-g --coverage",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g --coverage"
+      }
+    },
+    {
+      "name": "wasix",
+      "displayName": "WASIX (WebAssembly)",
+      "description": "WASIX target with import-based N-API — requires wasixcc toolchain",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/wasix/wasix-toolchain.cmake",
+        "EDGE_NAPI_PROVIDER": "imports",
+        "EDGE_BUILD_CLI": "ON",
+        "BUILD_TESTING": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
+    },
+    {
+      "name": "wasix",
+      "configurePreset": "wasix"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
