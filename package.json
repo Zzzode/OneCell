@@ -33,6 +33,8 @@
     "build:nanoclaw": "pnpm --filter @onecell/nanoclaw run build",
     "test": "pnpm -r --stream run test",
     "lint": "pnpm -r --stream run lint",
-    "format:check": "pnpm -r --stream run format:check"
+    "format:check": "pnpm -r --stream run format:check",
+    "format:fix": "pnpm -r --stream run format:fix",
+    "typecheck": "pnpm -r --stream run typecheck"
   }
 }

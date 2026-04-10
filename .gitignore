@@ -1,9 +1,11 @@
 # Dependencies
 node_modules/
+.npm-cache/
 
 # Build outputs
 dist/
 build/
+build-*/
 *.tsbuildinfo
 
 # Coverage
@@ -19,12 +21,13 @@ Thumbs.db
 *.swp
 *.swo
 
-# Environment
+# Environment & secrets
 .env
 .env.local
 .env.*.local
 .envrc
 .direnv
+*.keys.json
 
 # Logs
 *.log
@@ -33,6 +36,30 @@ logs/
 # Runtime data
 data/
 store/
+groups/
+
+# Temp files
+.tmp-*
 
 # AI tooling artifacts
 .claude/
+.mcp.json
+
+# edgejs — C++ / build artifacts
+/napi/v8/build*
+/napi/target
+/napi/wasmer/target
+/napi/cmake
+/Testing
+/tests/cmake
+v8-*.tar.xz
+/deps/libuv-wasix
+/deps/openssl-wasix
+/v8-custom-builds
+/.framework-test
+/.pnpm-store
+benchmarks/results/*.json
+benchmarks/results/*.csv
+benchmarks/results/*.md
+.cache
+compile_commands.json
