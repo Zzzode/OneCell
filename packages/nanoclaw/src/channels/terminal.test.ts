@@ -149,12 +149,16 @@ describe('terminal ui helpers', () => {
   beforeEach(() => {
     readlineHarness.reset();
     resetTerminalEventLogForTests();
-    vi.mocked(buildTerminalAgentsSummaryFromObservability).mockReturnValue(null);
+    vi.mocked(buildTerminalAgentsSummaryFromObservability).mockReturnValue(
+      null,
+    );
     vi.mocked(buildTerminalGraphSummaryFromObservability).mockReturnValue(null);
     vi.mocked(buildTerminalFocusSummary).mockReturnValue(null);
     vi.mocked(cycleTerminalFocus).mockReturnValue(null);
     vi.mocked(resetTerminalObservability).mockReset();
-    vi.mocked(setTerminalFocus).mockImplementation((target: string) => `focus -> ${target}`);
+    vi.mocked(setTerminalFocus).mockImplementation(
+      (target: string) => `focus -> ${target}`,
+    );
     vi.mocked(getAllTasks).mockReturnValue([
       {
         id: 'task-active',
@@ -673,7 +677,10 @@ describe('terminal ui helpers', () => {
   });
 
   it('cycles focus on Shift+Down escape sequence', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
     vi.mocked(cycleTerminalFocus).mockReturnValue('worker 2');
     vi.mocked(buildTerminalFocusSummary).mockReturnValue('focus: worker 2');
     const writeSpy = vi
@@ -696,7 +703,9 @@ describe('terminal ui helpers', () => {
 
       expect(cycleTerminalFocus).toHaveBeenCalledWith(1);
       expect(
-        writeSpy.mock.calls.some(([chunk]) => String(chunk).includes('focus: worker 2')),
+        writeSpy.mock.calls.some(([chunk]) =>
+          String(chunk).includes('focus: worker 2'),
+        ),
       ).toBe(true);
 
       await channel!.disconnect();
@@ -840,7 +849,8 @@ describe('terminal ui helpers', () => {
 
       expect(channel).not.toBeNull();
       await channel!.connect();
-      const promptCountAfterConnect = readlineHarness.rl.prompt.mock.calls.length;
+      const promptCountAfterConnect =
+        readlineHarness.rl.prompt.mock.calls.length;
 
       await channel!.setTyping?.('term:canary-group', true);
       const promptCountWhileBusy = readlineHarness.rl.prompt.mock.calls.length;
@@ -884,7 +894,8 @@ describe('terminal ui helpers', () => {
 
       expect(channel).not.toBeNull();
       await channel!.connect();
-      const promptCountAfterConnect = readlineHarness.rl.prompt.mock.calls.length;
+      const promptCountAfterConnect =
+        readlineHarness.rl.prompt.mock.calls.length;
 
       emitTerminalSystemEvent(
         'term:canary-group',
@@ -975,7 +986,10 @@ describe('terminal ui helpers', () => {
   });
 
   it('triggers onCancel when ESC is pressed during active typing', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
     const onCancel = vi.fn();
     const factory = getChannelFactory('terminal');
     const channel = factory!({
@@ -998,7 +1012,10 @@ describe('terminal ui helpers', () => {
   });
 
   it('triggers onCancel when ESC is pressed with running executions', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
     vi.mocked(listExecutionStates).mockReturnValue([
       {
         executionId: 'exec-running',
@@ -1042,7 +1059,10 @@ describe('terminal ui helpers', () => {
   });
 
   it('does not trigger onCancel when ESC is pressed while idle', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
     vi.mocked(listExecutionStates).mockReturnValue([]);
     vi.mocked(listTaskGraphs).mockReturnValue([]);
 
@@ -1066,7 +1086,10 @@ describe('terminal ui helpers', () => {
   });
 
   it('ignores escape sequences (arrow keys) and only responds to lone ESC', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
     const onCancel = vi.fn();
     const factory = getChannelFactory('terminal');
     const channel = factory!({

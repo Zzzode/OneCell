@@ -75,8 +75,7 @@ export type EdgeTeamOrchestrationResult =
   | { handled: false }
   | { handled: true; status: 'success' | 'error' };
 
-const TEAM_TRIGGER_PATTERN =
-  /\bagent\s+team\b/i;
+const TEAM_TRIGGER_PATTERN = /\bagent\s+team\b/i;
 const EDGE_TEAM_EXECUTION_DEADLINE_MS = 90 * 1000;
 const EDGE_TEAM_PLANNER_OUTPUT_PREVIEW_LIMIT = 240;
 const GROUNDED_TERMINAL_COMMANDS = [
@@ -114,10 +113,15 @@ function emitTeamProgress(chatJid: string, text: string): void {
   emitTerminalSystemEvent(chatJid, text);
 }
 
-function previewWorkerSummary(text: string | null | undefined): string | undefined {
-  const normalized = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
+function previewWorkerSummary(
+  text: string | null | undefined,
+): string | undefined {
+  const normalized =
+    typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
   if (!normalized) return undefined;
-  return normalized.length <= 180 ? normalized : `${normalized.slice(0, 180)}...`;
+  return normalized.length <= 180
+    ? normalized
+    : `${normalized.slice(0, 180)}...`;
 }
 
 function parseChineseNumeral(value: string): number | null {
@@ -913,7 +917,12 @@ export async function maybeRunEdgeTeamOrchestration(
         const startedAt = Date.now();
 
         const output = await options.edgeWorker.run(options.group, {
-          prompt: buildChildPrompt(role, options.prompt, plan.teamSize, options.frameworkRun.baseWorkspaceVersion),
+          prompt: buildChildPrompt(
+            role,
+            options.prompt,
+            plan.teamSize,
+            options.frameworkRun.baseWorkspaceVersion,
+          ),
           groupFolder: options.group.folder,
           chatJid: options.chatJid,
           isMain: options.isMain,

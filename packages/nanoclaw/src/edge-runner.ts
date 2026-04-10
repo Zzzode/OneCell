@@ -630,9 +630,7 @@ async function* withHeartbeatWhilePending<T>(options: {
     const next = (await Promise.race([
       taggedRun,
       delay(intervalMs).then(() => ({ kind: 'heartbeat' as const })),
-    ])) as
-      | { kind: 'result'; value: T }
-      | { kind: 'heartbeat' };
+    ])) as { kind: 'result'; value: T } | { kind: 'heartbeat' };
 
     if (next.kind === 'result') {
       return next.value;

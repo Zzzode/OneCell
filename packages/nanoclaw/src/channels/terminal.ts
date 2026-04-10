@@ -603,7 +603,10 @@ class TerminalChannel implements Channel {
     const next = cycleTerminalFocus(direction);
     if (!next) return;
     const detail = buildTerminalFocusSummary();
-    this.setInspector('focus', detail ? `focus -> ${next}\n\n${detail}` : `focus -> ${next}`);
+    this.setInspector(
+      'focus',
+      detail ? `focus -> ${next}\n\n${detail}` : `focus -> ${next}`,
+    );
     this.renderScreen(true);
   }
 
@@ -743,7 +746,9 @@ class TerminalChannel implements Channel {
         const count = Number.parseInt(parts[1] || '', 10);
         this.showInspector(
           'logs',
-          buildTerminalLogsSummary(Number.isNaN(count) ? DEFAULT_LOG_TAIL : count),
+          buildTerminalLogsSummary(
+            Number.isNaN(count) ? DEFAULT_LOG_TAIL : count,
+          ),
         );
         return true;
       }

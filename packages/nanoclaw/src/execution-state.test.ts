@@ -488,9 +488,9 @@ describe('graceful terminal quit cleans up all running state', () => {
     const terminalRunning = listExecutionStates('running').filter(
       (e) => e.groupJid === terminalJid,
     );
-    const terminalCancelRequested = listExecutionStates('cancel_requested').filter(
-      (e) => e.groupJid === terminalJid,
-    );
+    const terminalCancelRequested = listExecutionStates(
+      'cancel_requested',
+    ).filter((e) => e.groupJid === terminalJid);
     for (const execution of [...terminalRunning, ...terminalCancelRequested]) {
       requestExecutionCancel(execution.executionId);
     }
@@ -498,7 +498,11 @@ describe('graceful terminal quit cleans up all running state', () => {
       (g) => g.chatJid === terminalJid || g.groupFolder === terminalGroupFolder,
     );
     for (const graph of terminalGraphs) {
-      failRootTaskGraph(graph.graphId, graph.rootTaskId, 'Terminal session quit');
+      failRootTaskGraph(
+        graph.graphId,
+        graph.rootTaskId,
+        'Terminal session quit',
+      );
     }
 
     // 验证 terminal 的 execution 都被取消了

@@ -437,9 +437,8 @@ describe('index group runtime fallback', () => {
 
     const db = await import('./db.js');
     const index = await import('./index.js');
-    const { createRootTaskGraph, markTaskNodeRunning } = await import(
-      './task-graph-state.js'
-    );
+    const { createRootTaskGraph, markTaskNodeRunning } =
+      await import('./task-graph-state.js');
     const { beginExecution } = await import('./execution-state.js');
 
     db._initTestDatabase();

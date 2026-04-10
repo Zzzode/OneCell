@@ -1034,3 +1034,166 @@ if(NOT EDGE_IS_WASIX_TARGET)
   enable_testing()
   add_subdirectory(tests)
 endif()
+
+# ── Custom targets (replacing Makefile) ──────────────────────────────
+
+# Extract version from header
+file(STRINGS "${EDGE_ROOT}/src/edge_version.h" _ver_line REGEX "EDGE_MAJOR_VERSION")
+string(REGEX MATCH "([0-9]+)" _ver_major "${_ver_line}")
+file(STRINGS "${EDGE_ROOT}/src/edge_version.h" _ver_line REGEX "EDGE_MINOR_VERSION")
+string(REGEX MATCH "([0-9]+)" _ver_minor "${_ver_line}")
+file(STRINGS "${EDGE_ROOT}/src/edge_version.h" _ver_line REGEX "EDGE_PATCH_VERSION")
+string(REGEX MATCH "([0-9]+)" _ver_patch "${_ver_line}")
+set(EDGE_VERSION_BASE "${_ver_major}.${_ver_minor}.${_ver_patch}")
+if(IS_FINAL_RELEASE)
+  set(EDGE_PACKAGE_VERSION "${EDGE_VERSION_BASE}")
+else()
+  set(EDGE_PACKAGE_VERSION "${EDGE_VERSION_BASE}-${EDGE_VERSION_COMMIT}")
+endif()
+set(EDGE_DIST_DIR "${CMAKE_BINARY_DIR}/dist")
+set(EDGE_DIST_BIN_DIR "${EDGE_DIST_DIR}/bin")
+
+# ── build-wasix ──────────────────────────────────────────────────────
+add_custom_target(build-wasix
+  COMMAND "${CMAKE_COMMAND}" -E env bash "${PROJECT_ROOT}/wasix/build-wasix.sh"
+  WORKING_DIRECTORY "${PROJECT_ROOT}"
+  COMMENT "Building WASIX target"
+)
+
+# ── build-napi ───────────────────────────────────────────────────────
+set(EDGE_BUILD_NAPI_DIR "${CMAKE_BINARY_DIR}/../build-v8-napi" CACHE PATH
+    "Build directory for the standalone NAPI/V8 layer")
+add_custom_target(build-napi
+  COMMAND ${CMAKE_COMMAND}
+    -S "${PROJECT_ROOT}/napi/v8"
+    -B "${EDGE_BUILD_NAPI_DIR}"
+    -DCMAKE_BUILD_TYPE=$<CONFIG>
+  COMMAND ${CMAKE_COMMAND} --build "${EDGE_BUILD_NAPI_DIR}" -j8
+  WORKING_DIRECTORY "${PROJECT_ROOT}"
+  COMMENT "Building N-API V8 layer"
+)
+
+# ── test-napi ────────────────────────────────────────────────────────
+add_custom_target(test-napi
+  COMMAND ${CMAKE_COMMAND} --build "${EDGE_BUILD_NAPI_DIR}" -j8
+  COMMAND ctest --test-dir "${EDGE_BUILD_NAPI_DIR}" --output-on-failure -R "^napi_v8\\."
+  DEPENDS build-napi
+  WORKING_DIRECTORY "${PROJECT_ROOT}"
+  COMMENT "Running N-API tests"
+)
+
+# ── build-napi-wasmer-cli ────────────────────────────────────────────
+set(EDGE_NAPI_WASMER_DIR "${PROJECT_ROOT}/napi" CACHE PATH
+    "Path to the napi submodule (contains Cargo.toml for the Wasmer NAPI CLI)")
+add_custom_target(build-napi-wasmer-cli
+  COMMAND ./cargo-standalone.sh build --features cli --bin napi_wasmer
+  WORKING_DIRECTORY "${EDGE_NAPI_WASMER_DIR}"
+  COMMENT "Building Wasmer NAPI CLI (Rust)"
+)
+
+# ── test-wasix-napi-cli ─────────────────────────────────────────────
+add_custom_target(test-wasix-napi-cli
+  COMMAND "${EDGE_NAPI_WASMER_DIR}/target/debug/napi_wasmer"
+          "${PROJECT_ROOT}/build-wasix/edgejs.wasm"
+          -e "console.log('hello world!');"
+  COMMENT "Smoke test: napi_wasmer with WASIX wasm"
+)
+
+# ── node-test-harness (test-only equivalent) ─────────────────────────
+add_custom_target(node-test
+  COMMAND "${CMAKE_COMMAND}" -E env NODE_TEST_RUNNER="$<TARGET_FILE:edge>"
+    bash "${PROJECT_ROOT}/test/nodejs_test_harness"
+    --category=node:buffer,node:console,node:dgram,node:diagnostics_channel,node:dns,node:events,node:http,node:https,node:os,node:path,node:punycode,node:querystring,node:stream,node:string_decoder,node:tty,node:url,node:zlib,node:crypto,node:domain,node:http2,node:tls,node:sys
+    --skip-tests=known_issues/test-stdin-is-always-net.socket.js,parallel/test-dns-perf_hooks.js,parallel/test-dns-channel-timeout.js
+  DEPENDS edge
+  WORKING_DIRECTORY "${PROJECT_ROOT}"
+  COMMENT "Running Node.js compatibility test suite"
+)
+
+# ── check-portability (macOS) ────────────────────────────────────────
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  add_custom_target(check-portability
+    COMMAND bash -c
+      "for bin in $<TARGET_FILE:edge> $<TARGET_FILE:edgeenv>; do \
+         deps=$$(otool -L \"$$bin\" | tail -n +2 | awk '{print $$1}' | grep '^/' | grep -Ev '^(/System/Library/|/usr/lib/)' || true); \
+         if [ -n \"$$deps\" ]; then \
+           echo 'error:' \"$$bin\" 'links to non-system dylibs:' >&2; \
+           echo \"$$deps\" >&2; \
+           exit 1; \
+         fi; \
+         file \"$$bin\"; \
+       done"
+    DEPENDS edge edgeenv
+    COMMENT "Checking binary portability (macOS)"
+  )
+endif()
+
+# ── dist ─────────────────────────────────────────────────────────────
+add_custom_target(clean-dist
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${EDGE_DIST_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/edge.zip"
+  COMMENT "Cleaning dist directory"
+)
+
+add_custom_target(dist
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${EDGE_DIST_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/edge.zip"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${EDGE_DIST_BIN_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE:edge>" "${EDGE_DIST_BIN_DIR}/edge"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE:edgeenv>" "${EDGE_DIST_BIN_DIR}/edgeenv"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${PROJECT_ROOT}/bin-compat" "${EDGE_DIST_DIR}/bin-compat"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PROJECT_ROOT}/README.md" "${EDGE_DIST_DIR}/README.md"
+  COMMAND ${CMAKE_COMMAND} -E tar cf "${CMAKE_BINARY_DIR}/edge.zip" --format=zip
+    "${EDGE_DIST_DIR}/bin" "${EDGE_DIST_DIR}/bin-compat" "${EDGE_DIST_DIR}/README.md"
+  DEPENDS edge edgeenv
+  WORKING_DIRECTORY "${PROJECT_ROOT}"
+  COMMENT "Creating distribution package"
+)
+
+# ── dist-wasix ───────────────────────────────────────────────────────
+add_custom_target(dist-wasix
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${EDGE_DIST_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/edge.zip"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${EDGE_DIST_BIN_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PROJECT_ROOT}/build-wasix/edgejs.wasm" "${EDGE_DIST_BIN_DIR}/edgejs"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${PROJECT_ROOT}/bin-compat" "${EDGE_DIST_DIR}/bin-compat"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PROJECT_ROOT}/README.md" "${EDGE_DIST_DIR}/README.md"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PROJECT_ROOT}/wasmer.toml" "${EDGE_DIST_DIR}/wasmer.toml"
+  COMMAND bash -c
+    "cd '${EDGE_DIST_DIR}' && sed -i'' 's|^source = \".*\"|source = \"./bin/edgejs\"|' wasmer.toml"
+  COMMAND ${CMAKE_COMMAND} -E tar cf "${CMAKE_BINARY_DIR}/edge.zip" --format=zip
+    "${EDGE_DIST_DIR}/bin" "${EDGE_DIST_DIR}/bin-compat"
+    "${EDGE_DIST_DIR}/README.md" "${EDGE_DIST_DIR}/wasmer.toml"
+  DEPENDS build-wasix
+  WORKING_DIRECTORY "${PROJECT_ROOT}"
+  COMMENT "Creating WASIX distribution package"
+)
+
+# ── framework-test ───────────────────────────────────────────────────
+add_custom_target(framework-test
+  COMMAND "$<TARGET_FILE:edge>" "${PROJECT_ROOT}/scripts/framework-test.js" test
+  DEPENDS edge
+  WORKING_DIRECTORY "${PROJECT_ROOT}"
+  COMMENT "Running framework tests"
+)
+
+add_custom_target(framework-test-reset
+  COMMAND bash -c
+    "if [ -x '$<TARGET_FILE:edge>' ]; then \
+       '$<TARGET_FILE:edge>' '${PROJECT_ROOT}/scripts/framework-test.js' reset; \
+     elif command -v node >/dev/null 2>&1; then \
+       node '${PROJECT_ROOT}/scripts/framework-test.js' reset; \
+     else \
+       echo 'error: edge binary missing and no node fallback' >&2; \
+       exit 1; \
+     fi"
+  COMMENT "Resetting framework test state"
+)

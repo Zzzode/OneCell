@@ -885,12 +885,12 @@ async function runAgent(
       },
       usesHeavyWorker
         ? (execution) =>
-          queue.registerProcess(
-            execution.chatJid,
-            execution.process,
-            execution.executionName,
-            execution.groupFolder,
-          )
+            queue.registerProcess(
+              execution.chatJid,
+              execution.process,
+              execution.executionName,
+              execution.groupFolder,
+            )
         : undefined,
       wrappedOnOutput,
     );
@@ -904,10 +904,7 @@ async function runAgent(
 
     if (recovery.kind === 'fallback' && executionId) {
       const rawError = streamedError || output.error || 'Unknown error';
-      failExecution(
-        executionId,
-        rawError,
-      );
+      failExecution(executionId, rawError);
       emitTerminalSystemEvent(
         chatJid,
         `执行降级：${graph.graphId} · edge → heavy · ${recovery.reason} · ${summarizeRuntimeError(rawError)}`,
@@ -1491,7 +1488,7 @@ async function main(): Promise<void> {
 const isDirectRun =
   process.argv[1] &&
   new URL(import.meta.url).pathname ===
-  new URL(`file://${process.argv[1]}`).pathname;
+    new URL(`file://${process.argv[1]}`).pathname;
 
 if (isDirectRun) {
   main().catch((err) => {

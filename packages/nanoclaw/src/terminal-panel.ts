@@ -169,13 +169,14 @@ function buildFocusTimeline(
     focusKey === 'root'
       ? turn.timeline
       : turn.timeline.filter(
-          (entry) =>
-            entry.targetKey === focusKey || entry.targetKey === 'root',
+          (entry) => entry.targetKey === focusKey || entry.targetKey === 'root',
         );
   return filtered.slice(-maxLines);
 }
 
-function statusTag(status: TerminalWorkerState['status'] | TerminalTurnState['status']): string {
+function statusTag(
+  status: TerminalWorkerState['status'] | TerminalTurnState['status'],
+): string {
   switch (status) {
     case 'running':
       return '[run]';
@@ -216,7 +217,11 @@ function section(
   return output;
 }
 
-function mergeColumns(left: string[], right: string[], totalWidth: number): string[] {
+function mergeColumns(
+  left: string[],
+  right: string[],
+  totalWidth: number,
+): string[] {
   if (totalWidth < COLUMN_BREAKPOINT) {
     return [...left, ...right];
   }
@@ -275,12 +280,20 @@ function buildFailureLines(
   if (turn.fallback) {
     pushUnique(
       lines,
-      `Route switched: ${(turn.fallback.fromBackend ?? 'unknown')} -> ${(turn.fallback.toBackend ?? 'unknown')}`,
+      `Route switched: ${turn.fallback.fromBackend ?? 'unknown'} -> ${turn.fallback.toBackend ?? 'unknown'}`,
     );
     pushUnique(lines, `Reason: ${turn.fallback.reason}`);
-    pushUnique(lines, turn.fallback.detail ? `Detail: ${turn.fallback.detail}` : null);
+    pushUnique(
+      lines,
+      turn.fallback.detail ? `Detail: ${turn.fallback.detail}` : null,
+    );
   }
-  pushUnique(lines, (focus?.error ?? turn.error) ? `Error: ${focus?.error ?? turn.error}` : null);
+  pushUnique(
+    lines,
+    (focus?.error ?? turn.error)
+      ? `Error: ${focus?.error ?? turn.error}`
+      : null,
+  );
   if (turn.status === 'failed' && !turn.error && !turn.fallback) {
     pushUnique(lines, `Turn failed during stage: ${turn.stage}`);
   }
@@ -314,9 +327,16 @@ function buildAgentLines(
   return lines;
 }
 
-function buildGraphLines(turn: TerminalTurnState, workers: TerminalWorkerState[]): string[] {
-  const completed = workers.filter((worker) => worker.status === 'completed').length;
-  const running = workers.filter((worker) => worker.status === 'running').length;
+function buildGraphLines(
+  turn: TerminalTurnState,
+  workers: TerminalWorkerState[],
+): string[] {
+  const completed = workers.filter(
+    (worker) => worker.status === 'completed',
+  ).length;
+  const running = workers.filter(
+    (worker) => worker.status === 'running',
+  ).length;
   const failed = workers.filter((worker) => worker.status === 'failed').length;
 
   return [
@@ -350,11 +370,13 @@ function buildTranscriptFeed(
   fallbacks?: Array<TerminalPanelTranscriptEntry | null>,
 ): TerminalFeedEntry[] {
   const feed: TerminalFeedEntry[] = [];
-  const transcript = entries && entries.length > 0
-    ? entries
-    : (fallbacks ?? []).filter(
-        (entry): entry is TerminalPanelTranscriptEntry => Boolean(entry && entry.text.trim()),
-      );
+  const transcript =
+    entries && entries.length > 0
+      ? entries
+      : (fallbacks ?? []).filter(
+          (entry): entry is TerminalPanelTranscriptEntry =>
+            Boolean(entry && entry.text.trim()),
+        );
   for (const entry of transcript) {
     feed.push({
       at: entry.at,
@@ -364,7 +386,11 @@ function buildTranscriptFeed(
   }
 
   if (turn) {
-    const timeline = buildFocusTimeline(turn, focus?.key ?? 'root', height < 28 ? 8 : 12);
+    const timeline = buildFocusTimeline(
+      turn,
+      focus?.key ?? 'root',
+      height < 28 ? 8 : 12,
+    );
     for (const entry of timeline) {
       const text = simplifyTimelineText(entry.text).replace(/\s+/g, ' ').trim();
       if (!text || isNoisyStep(text)) continue;
@@ -374,7 +400,9 @@ function buildTranscriptFeed(
 
   const deduped: TerminalFeedEntry[] = [];
   const seen = new Set<string>();
-  for (const entry of feed.sort((left, right) => Date.parse(left.at) - Date.parse(right.at))) {
+  for (const entry of feed.sort(
+    (left, right) => Date.parse(left.at) - Date.parse(right.at),
+  )) {
     const key = `${entry.role}:${entry.text}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -394,9 +422,12 @@ function buildTranscriptLines(
   const feed = buildTranscriptFeed(turn, focus, entries, height, fallbacks);
   if (feed.length === 0) return ['No transcript yet.'];
   const maxEntries = height < 28 ? 8 : 12;
-  return feed.slice(-maxEntries).map(
-    (entry) => `[${shortTime(entry.at)}] ${speakerLabel(entry.role)}> ${entry.text}`,
-  );
+  return feed
+    .slice(-maxEntries)
+    .map(
+      (entry) =>
+        `[${shortTime(entry.at)}] ${speakerLabel(entry.role)}> ${entry.text}`,
+    );
 }
 
 function buildFocusDetailLines(focus: TerminalWorkerState | null): string[] {
@@ -426,11 +457,15 @@ function buildRecentLines(
   fallback: string | null | undefined,
   label: 'reply' | 'system',
 ): string[] {
-  const source = entries && entries.length > 0 ? entries : fallback ? [fallback] : [];
+  const source =
+    entries && entries.length > 0 ? entries : fallback ? [fallback] : [];
   if (source.length === 0) {
     return [`No recent ${label} messages.`];
   }
-  return source.slice(-4).map((entry) => entry.trim()).filter(Boolean);
+  return source
+    .slice(-4)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function buildInspectorLines(body: string | null | undefined): string[] {
@@ -497,26 +532,37 @@ function buildIdlePanel(options: {
     1,
   );
   const left = [
-    ...section('Status', [`State: ${options.busy ? 'processing request' : 'idle'}`], Math.max(20, options.width), 1),
+    ...section(
+      'Status',
+      [`State: ${options.busy ? 'processing request' : 'idle'}`],
+      Math.max(20, options.width),
+      1,
+    ),
   ];
   const right = [
     ...section(
       'Recent System',
-      buildRecentLines(options.recentSystemEvents, options.latestSystemEvent, 'system'),
+      buildRecentLines(
+        options.recentSystemEvents,
+        options.latestSystemEvent,
+        'system',
+      ),
       Math.max(20, options.width),
       1,
     ),
   ];
   const bottom = options.inspectorBody
-      ? [
-          ...section(
-            options.inspectorTitle ? `Inspector: ${options.inspectorTitle}` : 'Inspector',
-            buildInspectorLines(options.inspectorBody),
-            Math.max(20, options.width),
-            1,
-          ),
-        ]
-      : [];
+    ? [
+        ...section(
+          options.inspectorTitle
+            ? `Inspector: ${options.inspectorTitle}`
+            : 'Inspector',
+          buildInspectorLines(options.inspectorBody),
+          Math.max(20, options.width),
+          1,
+        ),
+      ]
+    : [];
 
   return renderFrame({
     width: options.width,
@@ -525,7 +571,8 @@ function buildIdlePanel(options: {
     left,
     right,
     bottom,
-    footer: 'Keys: Shift+Up/Down focus | ESC interrupt | /logs raw events | /help',
+    footer:
+      'Keys: Shift+Up/Down focus | ESC interrupt | /logs raw events | /help',
   });
 }
 
@@ -557,9 +604,14 @@ export function buildTerminalPanel(options: {
     return buildIdlePanel({ ...options, width, height });
   }
 
-  const focus = turn.workers.get(turn.focusKey) ?? turn.workers.get('root') ?? null;
+  const focus =
+    turn.workers.get(turn.focusKey) ?? turn.workers.get('root') ?? null;
   const workers = sortedWorkers(turn);
-  const failureLines = buildFailureLines(turn, focus, options.latestSystemEvent);
+  const failureLines = buildFailureLines(
+    turn,
+    focus,
+    options.latestSystemEvent,
+  );
   const showSelection =
     focus !== null &&
     (focus.key !== 'root' || Boolean(focus.roleTitle || focus.error));
@@ -570,7 +622,12 @@ export function buildTerminalPanel(options: {
     1,
   );
   const left = [
-    ...section('Current', buildOverviewLines(turn, focus, options.busy), Math.max(24, width), 1),
+    ...section(
+      'Current',
+      buildOverviewLines(turn, focus, options.busy),
+      Math.max(24, width),
+      1,
+    ),
     ...(failureLines.length > 0
       ? [
           ...section(
@@ -583,10 +640,20 @@ export function buildTerminalPanel(options: {
       : []),
   ];
   const right = [
-    ...section('Agents', buildAgentLines(turn, workers, Math.max(24, width), height), Math.max(24, width), 1),
+    ...section(
+      'Agents',
+      buildAgentLines(turn, workers, Math.max(24, width), height),
+      Math.max(24, width),
+      1,
+    ),
     ...(showSelection
       ? [
-          ...section('Selection', buildFocusDetailLines(focus), Math.max(24, width), 1),
+          ...section(
+            'Selection',
+            buildFocusDetailLines(focus),
+            Math.max(24, width),
+            1,
+          ),
         ]
       : []),
     ...section(
@@ -599,7 +666,9 @@ export function buildTerminalPanel(options: {
   const bottom = options.inspectorBody
     ? [
         ...section(
-          options.inspectorTitle ? `Inspector: ${options.inspectorTitle}` : 'Inspector',
+          options.inspectorTitle
+            ? `Inspector: ${options.inspectorTitle}`
+            : 'Inspector',
           buildInspectorLines(options.inspectorBody),
           width,
           1,
@@ -614,6 +683,7 @@ export function buildTerminalPanel(options: {
     left,
     right,
     bottom,
-    footer: 'Keys: Shift+Up/Down focus agent | ESC interrupt | /focus <agent> | /logs raw events',
+    footer:
+      'Keys: Shift+Up/Down focus agent | ESC interrupt | /focus <agent> | /logs raw events',
   });
 }

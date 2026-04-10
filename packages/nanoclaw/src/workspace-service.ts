@@ -45,7 +45,9 @@ function listFilesRecursive(root: string): string[] {
       if (stat.isDirectory()) {
         walk(fullPath);
       } else if (stat.isFile()) {
-        if (WORKSPACE_SNAPSHOT_EXCLUDED_SUFFIXES.some((s) => name.endsWith(s))) {
+        if (
+          WORKSPACE_SNAPSHOT_EXCLUDED_SUFFIXES.some((s) => name.endsWith(s))
+        ) {
           continue;
         }
         entries.push(path.relative(root, fullPath));

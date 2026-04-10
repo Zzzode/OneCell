@@ -24,9 +24,8 @@ describe('team orchestrator', () => {
   });
 
   it('uses explicit agent team trigger and planner result instead of numbered regex splitting', async () => {
-    const { detectEdgeTeamPlan, shouldUseEdgeTeamPlanner } = await import(
-      './team-orchestrator.js'
-    );
+    const { detectEdgeTeamPlan, shouldUseEdgeTeamPlanner } =
+      await import('./team-orchestrator.js');
 
     expect(
       shouldUseEdgeTeamPlanner(

@@ -13,7 +13,11 @@ export interface ExecutionDeadline {
 }
 
 export interface ExecutionPlanFragment {
-  kind: 'single_root' | 'edge_fanout_child' | 'edge_fanout_aggregate' | 'edge_team_planner';
+  kind:
+    | 'single_root'
+    | 'edge_fanout_child'
+    | 'edge_fanout_aggregate'
+    | 'edge_team_planner';
   requestKind?: string;
   routeReason?: string;
   policyVersion?: string;

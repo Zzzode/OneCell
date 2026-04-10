@@ -17,6 +17,6 @@
     }
   },
   "scripts": {
-    "build": "make -C ../.. build-edge"
+    "build": "cmake -S ../.. -B ../../build-edge -DCMAKE_BUILD_TYPE=Release && cmake --build ../../build-edge -j8"
   }
 }

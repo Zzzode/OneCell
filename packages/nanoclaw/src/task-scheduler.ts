@@ -371,10 +371,7 @@ async function runTask(
 
     if (recovery.kind === 'fallback' && executionId) {
       const rawError = streamedError || output.error || 'Unknown error';
-      failExecution(
-        executionId,
-        rawError,
-      );
+      failExecution(executionId, rawError);
       emitTerminalSystemEvent(
         task.chat_jid,
         `执行降级：${graph.graphId} · edge → heavy · ${recovery.reason} · ${summarizeRuntimeError(rawError)}`,

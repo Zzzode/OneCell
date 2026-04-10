@@ -6,7 +6,11 @@ const TERMINAL_PANEL_TIMELINE_LIMIT = 4;
 const TERMINAL_FOCUS_TIMELINE_LIMIT = 8;
 
 export type TerminalTurnStatus = 'running' | 'completed' | 'failed';
-export type TerminalWorkerStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type TerminalWorkerStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed';
 
 export interface TerminalTimelineEntry {
   at: string;
@@ -68,7 +72,10 @@ function formatTerminalTime(value: string): string {
   return formatDisplayDateTime(value, TIMEZONE);
 }
 
-function previewText(text: string | null | undefined, max = 160): string | null {
+function previewText(
+  text: string | null | undefined,
+  max = 160,
+): string | null {
   const normalized =
     typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
   if (!normalized) return null;
@@ -510,7 +517,7 @@ export function recordTerminalFallback(options: {
   turn.lastActivity = `fallback: ${options.reason}`;
   pushTimeline(
     turn,
-    `fallback · ${(options.fromBackend ?? 'unknown')} -> ${(options.toBackend ?? 'unknown')} · ${options.reason}${options.detail ? ` · ${previewText(options.detail, 180)}` : ''}`,
+    `fallback · ${options.fromBackend ?? 'unknown'} -> ${options.toBackend ?? 'unknown'} · ${options.reason}${options.detail ? ` · ${previewText(options.detail, 180)}` : ''}`,
     'root',
     at,
   );
@@ -616,7 +623,9 @@ export function cycleTerminalFocus(
   if (!turn) return null;
   const workers = sortedWorkers(turn);
   if (workers.length === 0) return null;
-  const currentIndex = workers.findIndex((worker) => worker.key === turn.focusKey);
+  const currentIndex = workers.findIndex(
+    (worker) => worker.key === turn.focusKey,
+  );
   const baseIndex = currentIndex === -1 ? 0 : currentIndex;
   const nextIndex = (baseIndex + direction + workers.length) % workers.length;
   const next = workers[nextIndex];
@@ -640,10 +649,12 @@ function buildFocusedTimelineLines(
   const entries =
     focusKey === 'root'
       ? turn.timeline.slice(-limit)
-      : turn.timeline.filter(
-          (entry) =>
-            entry.targetKey === focusKey || entry.targetKey === 'root',
-        ).slice(-limit);
+      : turn.timeline
+          .filter(
+            (entry) =>
+              entry.targetKey === focusKey || entry.targetKey === 'root',
+          )
+          .slice(-limit);
   return entries.map(
     (entry) => `- [${formatTerminalTime(entry.at)}] ${entry.text}`,
   );
@@ -672,7 +683,7 @@ export function buildTerminalFocusSummary(
   }
   if (turn.fallback) {
     lines.push(
-      `fallback: ${(turn.fallback.fromBackend ?? 'unknown')} -> ${(turn.fallback.toBackend ?? 'unknown')} · ${turn.fallback.reason}${turn.fallback.detail ? ` · ${turn.fallback.detail}` : ''}`,
+      `fallback: ${turn.fallback.fromBackend ?? 'unknown'} -> ${turn.fallback.toBackend ?? 'unknown'} · ${turn.fallback.reason}${turn.fallback.detail ? ` · ${turn.fallback.detail}` : ''}`,
     );
   }
   const timelineLines = buildFocusedTimelineLines(
@@ -723,7 +734,7 @@ export function buildTerminalAgentsSummaryFromObservability(
     `lastActivity: ${turn.lastActivity ?? 'none'}`,
     ...(turn.fallback
       ? [
-          `fallback: ${(turn.fallback.fromBackend ?? 'unknown')} -> ${(turn.fallback.toBackend ?? 'unknown')} · ${turn.fallback.reason}${turn.fallback.detail ? ` · ${turn.fallback.detail}` : ''}`,
+          `fallback: ${turn.fallback.fromBackend ?? 'unknown'} -> ${turn.fallback.toBackend ?? 'unknown'} · ${turn.fallback.reason}${turn.fallback.detail ? ` · ${turn.fallback.detail}` : ''}`,
         ]
       : []),
     '',
@@ -752,7 +763,7 @@ export function buildTerminalGraphSummaryFromObservability(
     `createdAt: ${formatTerminalTime(turn.startedAt)}`,
     `updatedAt: ${formatTerminalTime(turn.updatedAt)}`,
     `lastActivity: ${turn.lastActivity ?? 'none'}`,
-    `fallback: ${turn.fallback ? `${(turn.fallback.fromBackend ?? 'unknown')} -> ${(turn.fallback.toBackend ?? 'unknown')} · ${turn.fallback.reason}${turn.fallback.detail ? ` · ${turn.fallback.detail}` : ''}` : 'none'}`,
+    `fallback: ${turn.fallback ? `${turn.fallback.fromBackend ?? 'unknown'} -> ${turn.fallback.toBackend ?? 'unknown'} · ${turn.fallback.reason}${turn.fallback.detail ? ` · ${turn.fallback.detail}` : ''}` : 'none'}`,
     `error: ${turn.error ?? 'none'}`,
     '',
     'timeline:',
@@ -761,7 +772,9 @@ export function buildTerminalGraphSummaryFromObservability(
       : ['- none']),
     '',
     'workers:',
-    ...sortedWorkers(turn).map((worker) => workerLines(worker, worker.key === turn.focusKey)),
+    ...sortedWorkers(turn).map((worker) =>
+      workerLines(worker, worker.key === turn.focusKey),
+    ),
   ];
   return lines.join('\n');
 }

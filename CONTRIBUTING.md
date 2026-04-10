@@ -16,7 +16,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 4. Ensure tests pass (`pnpm --filter @onecell/edgejs test`)
 5. Submit a pull request
 
-**Build requirements:** CMake >= 3.20, Make, C++20 compiler
+**Build requirements:** CMake >= 3.20, C++20 compiler
 
 ### OneCell Assistant (`@onecell/nanoclaw`)
 

@@ -46,7 +46,7 @@ A personal AI assistant that runs Claude agents in isolated containers. Supports
 
 - Node.js >= 20
 - [pnpm](https://pnpm.io) >= 9
-- CMake >= 3.20 and Make (for building the runtime)
+- CMake >= 3.20 (for building the runtime)
 
 ### Install & Build
 
@@ -54,7 +54,7 @@ A personal AI assistant that runs Claude agents in isolated containers. Supports
 git clone https://github.com/Zzzode/onecell.git
 cd onecell
 pnpm install
-pnpm build:edgejs     # Build the runtime (CMake + Make)
+pnpm build:edgejs     # Build the runtime (CMake)
 pnpm build:nanoclaw   # Build the assistant (TypeScript)
 pnpm test
 ```
@@ -71,8 +71,7 @@ claude                # Launch Claude Code
 
 ```
 OneCell
-├── CMakeLists.txt            # CMake build
-├── Makefile                  # GNU Make build
+├── CMakeLists.txt            # CMake build (all targets)
 ├── src/                      # C++ runtime core
 ├── lib/                      # JavaScript standard library
 ├── deps/                     # Vendored libraries (V8, libuv, OpenSSL...)

@@ -78,17 +78,11 @@ export const DATA_DIR = path.resolve(
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
 export const ANTHROPIC_BASE_URL =
-  process.env.ANTHROPIC_BASE_URL ||
-  envConfig.ANTHROPIC_BASE_URL ||
-  undefined;
+  process.env.ANTHROPIC_BASE_URL || envConfig.ANTHROPIC_BASE_URL || undefined;
 export const ANTHROPIC_API_KEY =
-  process.env.ANTHROPIC_API_KEY ||
-  envConfig.ANTHROPIC_API_KEY ||
-  undefined;
+  process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || undefined;
 export const ANTHROPIC_MODEL =
-  process.env.ANTHROPIC_MODEL ||
-  envConfig.ANTHROPIC_MODEL ||
-  undefined;
+  process.env.ANTHROPIC_MODEL || envConfig.ANTHROPIC_MODEL || undefined;
 export const EDGE_RUNNER_MODE =
   process.env.EDGE_RUNNER_MODE || envConfig.EDGE_RUNNER_MODE || 'node';
 export const EDGE_RUNNER_PROVIDER =

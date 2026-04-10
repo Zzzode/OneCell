@@ -33,13 +33,14 @@ OneCell Runtime **uses WebAssembly** for sandboxing when in `--safe` mode, so ev
 curl -fsSL https://edgejs.org/install | bash
 ```
 
-Or build from source (requires CMake >= 3.20, Make, C++20 compiler):
+Or build from source (requires CMake >= 3.20, C++20 compiler):
 
 ```bash
 git clone https://github.com/Zzzode/onecell.git
 cd onecell
 git submodule update --init napi
-make build
+cmake -S . -B build-edge -DCMAKE_BUILD_TYPE=Release
+cmake --build build-edge -j8
 ./build-edge/edge --version
 ```
 
@@ -112,7 +113,8 @@ git submodule update --init napi
 Build the CLI locally:
 
 ```bash
-make build
+cmake -S . -B build-edge -DCMAKE_BUILD_TYPE=Release
+cmake --build build-edge -j8
 ./build-edge/edge server.js
 ```
 
@@ -125,8 +127,10 @@ Run in dev mode:
 Run tests:
 
 ```bash
-make test
-NODE_TEST_RUNNER="$(pwd)/build-edge/edge" \
+cmake --build build-edge -j8
+ctest --test-dir build-edge --output-on-failure
+cmake --build build-edge --target node-test
+```
 ./test/nodejs_test_harness --category=node:assert
 ```
 
