@@ -1,0 +1,21 @@
+{
+  "profile": "terminal",
+  "executionMode": "edge",
+  "edgeRunnerMode": "edgejs",
+  "providers": {
+    "anthropic": {
+      "type": "anthropic",
+      "apiKey": "${ANTHROPIC_API_KEY}",
+      "model": "claude-sonnet-4-20250514"
+    }
+  },
+  "edge": {
+    "provider": "anthropic",
+    "enableTools": true,
+    "disableFallback": false
+  },
+  "container": {
+    "provider": "anthropic",
+    "maxConcurrent": 5
+  }
+}
