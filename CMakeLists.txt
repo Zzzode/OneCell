@@ -733,6 +733,9 @@ target_link_libraries(edge_ncrypto
     OpenSSL::Crypto
     OpenSSL::SSL
 )
+# ncrypto wraps OpenSSL 3.0 low-level APIs (RSA_*, EC_KEY_*, DH_*, HMAC_*)
+# that are deprecated but required for Node.js crypto API compatibility.
+target_compile_options(edge_ncrypto PRIVATE -Wno-deprecated-declarations)
 
 add_library(edge_simdutf STATIC
   "${PROJECT_ROOT}/deps/simdutf/simdutf.cpp"
@@ -954,6 +957,11 @@ target_compile_definitions(edge_runtime
     EDGE_VERSION_COMMIT="${EDGE_VERSION_COMMIT}"
     EDGE_VERSION_SUFFIX="${EDGE_VERSION_SUFFIX}"
 )
+# Suppress deprecation warnings from vendored OpenSSL 3.0 and c-ares.
+# The runtime bindings intentionally use deprecated low-level crypto APIs
+# (RSA_*, EC_KEY_*, DH_*, HMAC_*) and legacy c-ares parse functions for
+# Node.js API compatibility — same approach as Node.js itself.
+target_compile_options(edge_runtime PRIVATE -Wno-deprecated-declarations)
 if(EDGE_IS_WASIX_TARGET)
   target_sources(edge_runtime PRIVATE
     wasix/src/wasix_compat.cc
@@ -1000,6 +1008,10 @@ if(EDGE_BUILD_CLI)
     ${EDGE_CLI_SOURCES}
   )
   set_target_properties(edge PROPERTIES ENABLE_EXPORTS ON)
+  # Suppress duplicate library warnings from static linking transitive deps
+  if(APPLE)
+    target_link_options(edge PRIVATE -Wl,-no_warn_duplicate_libraries)
+  endif()
   target_include_directories(edge
     PRIVATE
       "${EDGE_ROOT}/src"
@@ -1009,6 +1021,7 @@ if(EDGE_BUILD_CLI)
     PRIVATE
       edge_cli
   )
+  target_compile_options(edge PRIVATE -Wno-deprecated-declarations)
   if(EDGE_NAPI_PROVIDER STREQUAL "bundled-v8" AND NAPI_V8_DEFINES)
     target_compile_definitions(edge PRIVATE ${NAPI_V8_DEFINES})
   endif()
@@ -1023,6 +1036,9 @@ if(EDGE_BUILD_CLI)
     add_executable(edgeenv
       "${EDGE_ROOT}/src/edgeenv_main.cc"
     )
+    if(APPLE)
+      target_link_options(edgeenv PRIVATE -Wl,-no_warn_duplicate_libraries)
+    endif()
     target_include_directories(edgeenv
       PRIVATE
         "${EDGE_ROOT}/src"
