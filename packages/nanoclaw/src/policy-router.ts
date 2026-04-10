@@ -5,9 +5,18 @@ import {
   parseRequestedEdgeTool,
 } from './edge-capabilities.js';
 import { FRAMEWORK_POLICY_VERSION } from './framework-policy.js';
-import { EDGE_DISABLE_FALLBACK } from './config.js';
+import { getAppConfig } from './config.js';
 import type { AgentBackendId, ExecutionMode } from './execution-mode.js';
 import type { RegisteredGroup } from './types.js';
+
+/** Safely read edge.disableFallback; returns false when config is not yet initialized. */
+function isEdgeFallbackDisabled(): boolean {
+  try {
+    return getAppConfig().edge.disableFallback;
+  } catch {
+    return false;
+  }
+}
 
 export type CapabilityTag =
   | 'fs.read'
@@ -132,11 +141,22 @@ export function routeTaskNode(
   group: Pick<RegisteredGroup, 'executionMode'> | undefined,
   input: Pick<AgentRunInput, 'prompt' | 'script'>,
   defaultExecutionMode: ExecutionMode,
+  containerAvailable: boolean = true,
 ): PolicyRouteDecision {
   const executionMode = resolveGroupExecutionMode(group, defaultExecutionMode);
   const intent = buildTaskNodeIntent(input);
 
   if (executionMode === 'container') {
+    if (!containerAvailable) {
+      return {
+        executionMode: 'edge',
+        backendId: 'edge',
+        requiredCapabilities: intent.requiredCapabilities,
+        routeReason: 'no_special_capabilities',
+        policyVersion: FRAMEWORK_POLICY_VERSION,
+        fallbackEligible: false,
+      };
+    }
     return {
       executionMode,
       backendId: 'container',
@@ -154,7 +174,18 @@ export function routeTaskNode(
       requiredCapabilities: intent.requiredCapabilities,
       routeReason: 'group_pinned_edge',
       policyVersion: FRAMEWORK_POLICY_VERSION,
-      fallbackEligible: !EDGE_DISABLE_FALLBACK,
+      fallbackEligible: containerAvailable && !isEdgeFallbackDisabled(),
+    };
+  }
+
+  if (!containerAvailable) {
+    return {
+      executionMode: 'edge',
+      backendId: 'edge',
+      requiredCapabilities: intent.requiredCapabilities,
+      routeReason: 'no_special_capabilities',
+      policyVersion: FRAMEWORK_POLICY_VERSION,
+      fallbackEligible: false,
     };
   }
 
@@ -207,6 +238,6 @@ export function routeTaskNode(
         ? 'capability_match_edge'
         : 'no_special_capabilities',
     policyVersion: FRAMEWORK_POLICY_VERSION,
-    fallbackEligible: !EDGE_DISABLE_FALLBACK,
+    fallbackEligible: containerAvailable && !isEdgeFallbackDisabled(),
   };
 }
