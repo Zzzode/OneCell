@@ -22,7 +22,7 @@ export const TEST_CONFIG: NanoclawConfigFile = {
     },
     testlocal: { type: 'local' },
   },
-  edge: { provider: 'testanthropic' },
+  edge: { provider: 'testlocal' },
   container: { provider: 'testanthropic' },
 };
 
@@ -36,6 +36,25 @@ export function initTestConfig(): string {
   fs.writeFileSync(_testConfigPath, JSON.stringify(TEST_CONFIG));
   initConfig(_testConfigPath);
   return _testConfigPath;
+}
+
+/**
+ * Write the test config file and return its path, without calling initConfig().
+ * Use this with freshly-imported config modules after vi.resetModules().
+ * Accepts partial overrides to merge into the default TEST_CONFIG.
+ */
+export function writeTestConfigFile(
+  overrides?: Partial<NanoclawConfigFile>,
+): string {
+  const configPath = path.join(
+    os.tmpdir(),
+    `nanoclaw-test-config-${process.pid}.json`,
+  );
+  const merged = overrides
+    ? { ...TEST_CONFIG, ...overrides }
+    : TEST_CONFIG;
+  fs.writeFileSync(configPath, JSON.stringify(merged));
+  return configPath;
 }
 
 export function cleanupTestConfig(): void {

@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkWorker } from './framework-worker.js';
 import type { RegisteredGroup } from './types.js';
+import { cleanupTestConfig, initTestConfig, writeTestConfigFile } from './test-config.js';
 
 describe('team orchestrator', () => {
   let tempRoot: string;
 
   beforeEach(() => {
+    initTestConfig();
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-team-'));
     vi.stubEnv('NANOCLAW_STORE_DIR', path.join(tempRoot, 'store'));
     vi.stubEnv('NANOCLAW_GROUPS_DIR', path.join(tempRoot, 'groups'));
@@ -18,6 +20,7 @@ describe('team orchestrator', () => {
   });
 
   afterEach(() => {
+    cleanupTestConfig();
     vi.resetModules();
     vi.unstubAllEnvs();
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -99,15 +102,18 @@ describe('team orchestrator', () => {
         getTaskNode,
         listExecutionStates,
       },
+      { initConfig: freshInitConfig },
       { createFrameworkRunContext },
       { maybeRunEdgeTeamOrchestration },
     ] = await Promise.all([
       import('./db.js'),
+      import('./config.js'),
       import('./framework-orchestrator.js'),
       import('./team-orchestrator.js'),
     ]);
 
     _initTestDatabase();
+    freshInitConfig(writeTestConfigFile());
 
     const group: RegisteredGroup = {
       name: 'Terminal Canary',

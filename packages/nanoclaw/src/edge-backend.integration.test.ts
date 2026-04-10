@@ -4,6 +4,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RegisteredGroup } from './types.js';
+import { cleanupTestConfig, initTestConfig, writeTestConfigFile } from './test-config.js';
 
 const group: RegisteredGroup = {
   name: 'Edge Group',
@@ -17,6 +18,7 @@ describe('edge backend integration', () => {
   let tempRoot: string;
 
   beforeEach(() => {
+    initTestConfig();
     tempRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), 'nanoclaw-edge-integration-'),
     );
@@ -26,6 +28,7 @@ describe('edge backend integration', () => {
   });
 
   afterEach(() => {
+    cleanupTestConfig();
     vi.resetModules();
     vi.unstubAllEnvs();
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -38,18 +41,21 @@ describe('edge backend integration', () => {
       vi.resetModules();
       const [
         dbModule,
+        { initConfig: freshInitConfig },
         executionStateModule,
         { createPersistentExecutionEventHooks },
         { createSubprocessEdgeRunner },
         { createEdgeBackend },
       ] = await Promise.all([
         import('./db.js'),
+        import('./config.js'),
         import('./execution-state.js'),
         import('./edge-event-dispatcher.js'),
         import('./edge-subprocess-runner.js'),
         import('./backends/edge-backend.js'),
       ]);
       dbModule.initDatabase();
+      freshInitConfig(writeTestConfigFile());
 
       const { getExecutionState, getLogicalSession, listExecutionCheckpoints } =
         dbModule;
@@ -117,18 +123,21 @@ describe('edge backend integration', () => {
     vi.resetModules();
     const [
       { initDatabase },
+      { initConfig: freshInitConfig },
       executionStateModule,
       { createPersistentExecutionEventHooks },
       { createSubprocessEdgeRunner },
       { createEdgeBackend },
     ] = await Promise.all([
       import('./db.js'),
+      import('./config.js'),
       import('./execution-state.js'),
       import('./edge-event-dispatcher.js'),
       import('./edge-subprocess-runner.js'),
       import('./backends/edge-backend.js'),
     ]);
     initDatabase();
+    freshInitConfig(writeTestConfigFile());
 
     const { beginExecution, commitExecution, completeExecution } =
       executionStateModule;
@@ -186,7 +195,7 @@ describe('edge backend integration', () => {
       { createPersistentExecutionEventHooks },
       { createSubprocessEdgeRunner },
       { createEdgeBackend },
-      { GROUPS_DIR },
+      { initConfig: freshInitConfig, GROUPS_DIR },
     ] = await Promise.all([
       import('./db.js'),
       import('./execution-state.js'),
@@ -196,6 +205,7 @@ describe('edge backend integration', () => {
       import('./config.js'),
     ]);
     initDatabase();
+    freshInitConfig(writeTestConfigFile());
 
     const { beginExecution, commitExecution, completeExecution } =
       executionStateModule;
@@ -245,18 +255,21 @@ describe('edge backend integration', () => {
     vi.resetModules();
     const [
       dbModule,
+      { initConfig: freshInitConfig },
       executionStateModule,
       { createPersistentExecutionEventHooks },
       { createSubprocessEdgeRunner },
       { createEdgeBackend },
     ] = await Promise.all([
       import('./db.js'),
+      import('./config.js'),
       import('./execution-state.js'),
       import('./edge-event-dispatcher.js'),
       import('./edge-subprocess-runner.js'),
       import('./backends/edge-backend.js'),
     ]);
     dbModule.initDatabase();
+    freshInitConfig(writeTestConfigFile());
 
     const { beginExecution, commitExecution, completeExecution } =
       executionStateModule;
