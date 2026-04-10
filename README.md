@@ -71,13 +71,22 @@ claude                # Launch Claude Code
 
 ```
 OneCell
-├── packages/edgejs/          # Runtime (C++ / Rust / JS)
-│   ├── src/                  #   C++ runtime core
-│   ├── lib/                  #   JavaScript standard library
-│   ├── napi/                 #   N-API abstraction layer
-│   └── deps/                 #   Vendored libraries (V8, libuv, OpenSSL...)
+├── CMakeLists.txt            # CMake build
+├── Makefile                  # GNU Make build
+├── src/                      # C++ runtime core
+├── lib/                      # JavaScript standard library
+├── deps/                     # Vendored libraries (V8, libuv, OpenSSL...)
+├── napi/                     # N-API abstraction layer (git submodule)
+├── wasix/                    # WASIX build support
+├── scripts/                  # Build and test scripts
+├── ARCHITECTURE.md           # Runtime architecture doc
 │
-└── packages/nanoclaw/        # Assistant (TypeScript)
+├── packages/edgejs/          # npm wrapper (@onecell/edgejs)
+│   ├── package.json
+│   ├── runtime-api.js
+│   └── runtime-api.d.ts
+│
+└── packages/nanoclaw/        # AI assistant (@onecell/nanoclaw)
     ├── src/                  #   Core orchestration, channels, IPC
     ├── container/            #   Agent container definitions
     ├── setup/                #   First-time setup module
@@ -88,7 +97,7 @@ OneCell Assistant runs Claude-powered agents inside OneCell Runtime sandboxes, p
 
 ## Documentation
 
-- [OneCell Runtime Architecture](packages/edgejs/ARCHITECTURE.md)
+- [OneCell Runtime Architecture](ARCHITECTURE.md)
 - [OneCell Assistant Spec](packages/nanoclaw/docs/SPEC.md)
 - [Security Model](SECURITY.md)
 - [Contributing Guide](CONTRIBUTING.md)

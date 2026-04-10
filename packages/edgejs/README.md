@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/Zzzode/onecell">OneCell</a> ·
   <a href="../../CONTRIBUTING.md">Contributing</a> ·
-  <a href="./ARCHITECTURE.md">Architecture</a>
+  <a href="../../ARCHITECTURE.md">Architecture</a>
 </p>
 
 <hr />
@@ -37,7 +37,7 @@ Or build from source (requires CMake >= 3.20, Make, C++20 compiler):
 
 ```bash
 git clone https://github.com/Zzzode/onecell.git
-cd onecell/packages/edgejs
+cd onecell
 git submodule update --init napi
 make build
 ./build-edge/edge --version
@@ -105,7 +105,7 @@ Clone the repo and initialize the `napi` submodule:
 
 ```bash
 git clone https://github.com/Zzzode/onecell.git
-cd onecell/packages/edgejs
+cd onecell
 git submodule update --init napi
 ```
 
@@ -132,12 +132,12 @@ NODE_TEST_RUNNER="$(pwd)/build-edge/edge" \
 
 ## Architecture
 
-For architecture details, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+For architecture details, see [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
 ### Key components
 
 ```
-packages/edgejs/
+onecell/
 ├── src/           # C++ runtime core (~90 source files)
 ├── lib/           # JavaScript standard library (Node.js-compatible)
 ├── napi/          # N-API abstraction layer (git submodule)

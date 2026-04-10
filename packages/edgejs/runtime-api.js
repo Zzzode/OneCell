@@ -3,4 +3,4 @@ import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export const binaryPath = join(__dirname, 'build-edge', 'edge');
+export const binaryPath = join(__dirname, '..', '..', 'build-edge', 'edge');

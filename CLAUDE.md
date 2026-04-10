@@ -4,7 +4,13 @@ pnpm workspace containing edgejs (secure JS runtime) and nanoclaw (AI assistant 
 
 ## Structure
 
-- `packages/edgejs/` — C++/Rust/JS runtime (CMake + Make build). Package: `@onecell/edgejs`
+- `src/` — C++ runtime core (CMake + Make build)
+- `lib/` — JavaScript standard library
+- `deps/` — Vendored libraries (V8, libuv, OpenSSL...)
+- `napi/` — N-API abstraction layer (git submodule)
+- `wasix/` — WASIX build support
+- `scripts/` — Build and test scripts
+- `packages/edgejs/` — npm wrapper package (`@onecell/edgejs`)
 - `packages/nanoclaw/` — TypeScript AI assistant (tsc + vitest). Package: `@onecell/nanoclaw`
 
 ## Commands
@@ -15,6 +21,7 @@ pnpm build                    # Build all packages
 pnpm build:edgejs             # Build edgejs only (requires cmake, make)
 pnpm build:nanoclaw           # Build nanoclaw only (requires edgejs built first for full functionality)
 pnpm test                     # Run all tests
+make build                    # Build the C++ runtime directly
 ```
 
 ## Key Integration
