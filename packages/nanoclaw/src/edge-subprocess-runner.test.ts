@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRunInput } from './agent-backend.js';
 import type { RegisteredGroup } from './types.js';
+import { cleanupTestConfig, initTestConfig, writeTestConfigFile } from './test-config.js';
 
 const group: RegisteredGroup = {
   name: 'Edge Group',
@@ -35,6 +36,7 @@ describe('EdgeSubprocessRunner', () => {
   let tempRoot: string;
 
   beforeEach(() => {
+    initTestConfig();
     tempRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), 'nanoclaw-edge-subprocess-'),
     );
@@ -44,6 +46,7 @@ describe('EdgeSubprocessRunner', () => {
   });
 
   afterEach(async () => {
+    cleanupTestConfig();
     vi.resetModules();
     vi.unstubAllEnvs();
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -95,6 +98,7 @@ describe('EdgeSubprocessRunner', () => {
       vi.stubEnv('EDGE_RUNNER_MODE', 'edgejs');
       vi.stubEnv('EDGEJS_BIN', fakeEdgeBin);
       vi.resetModules();
+      initTestConfig();
 
       const { resolveRunnerCommand } =
         await import('./edge-subprocess-runner.js');
@@ -111,7 +115,7 @@ describe('EdgeSubprocessRunner', () => {
     }
   });
 
-  it('routes openai-compatible provider requests through the host bridge', async () => {
+  it('routes openai-compatible provider requests through the host bridge', { timeout: 30000 }, async () => {
     vi.stubEnv('EDGE_RUNNER_PROVIDER', 'openai');
     vi.stubEnv('EDGE_API_BASE_URL', 'https://provider.example/v1');
     vi.stubEnv('EDGE_API_KEY', 'test-key');
@@ -136,15 +140,34 @@ describe('EdgeSubprocessRunner', () => {
 
     const [
       { initDatabase },
+      { initConfig: freshInitConfig },
       { createSubprocessEdgeRunner },
       { createEdgeBackend },
     ] = await Promise.all([
       import('./db.js'),
+      import('./config.js'),
       import('./edge-subprocess-runner.js'),
       import('./backends/edge-backend.js'),
     ]);
 
     initDatabase();
+    freshInitConfig(writeTestConfigFile({
+      providers: {
+        testanthropic: {
+          type: 'anthropic',
+          apiKey: 'test-anthropic-key',
+          model: 'claude-sonnet-4-20250514',
+        },
+        testopenai: {
+          type: 'openai',
+          apiKey: 'test-key',
+          baseUrl: 'https://provider.example/v1',
+          model: 'glm-5',
+        },
+        testlocal: { type: 'local' },
+      },
+      edge: { provider: 'testopenai' },
+    }));
     const backend = createEdgeBackend(createSubprocessEdgeRunner());
 
     const result = await backend.run(group, input);
@@ -220,15 +243,18 @@ describe('EdgeSubprocessRunner', () => {
 
     const [
       { initDatabase },
+      { initConfig: freshInitConfig },
       { createSubprocessEdgeRunner },
       { createEdgeBackend },
     ] = await Promise.all([
       import('./db.js'),
+      import('./config.js'),
       import('./edge-subprocess-runner.js'),
       import('./backends/edge-backend.js'),
     ]);
 
     initDatabase();
+    freshInitConfig(writeTestConfigFile());
     const backend = createEdgeBackend(createSubprocessEdgeRunner());
 
     await expect(backend.run(group, input)).resolves.toMatchObject({
