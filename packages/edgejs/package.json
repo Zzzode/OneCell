@@ -1,0 +1,22 @@
+{
+  "name": "@onecell/edgejs",
+  "version": "0.1.0",
+  "description": "Secure JavaScript runtime with WebAssembly sandboxing — part of OneCell",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zzzode/onecell.git",
+    "directory": "packages/edgejs"
+  },
+  "exports": {
+    ".": {
+      "types": "./runtime-api.d.ts",
+      "default": "./runtime-api.js"
+    }
+  },
+  "scripts": {
+    "build": "make build-edge"
+  }
+}

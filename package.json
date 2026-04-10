@@ -1,0 +1,38 @@
+{
+  "name": "onecell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OneCell — Secure runtime for AI workloads",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zzzode/onecell.git"
+  },
+  "homepage": "https://github.com/Zzzode/onecell#readme",
+  "bugs": {
+    "url": "https://github.com/Zzzode/onecell/issues"
+  },
+  "keywords": [
+    "javascript",
+    "runtime",
+    "ai",
+    "sandbox",
+    "wasm",
+    "webassembly",
+    "containers",
+    "edge-computing"
+  ],
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@10.10.0",
+  "scripts": {
+    "build": "pnpm -r --stream run build",
+    "build:edgejs": "pnpm --filter @onecell/edgejs run build",
+    "build:nanoclaw": "pnpm --filter @onecell/nanoclaw run build",
+    "test": "pnpm -r --stream run test",
+    "lint": "pnpm -r --stream run lint",
+    "format:check": "pnpm -r --stream run format:check"
+  }
+}

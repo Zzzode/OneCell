@@ -1,0 +1,50 @@
+{
+  "name": "@onecell/nanoclaw",
+  "version": "1.2.45",
+  "description": "Multi-channel AI assistant with container isolation — part of OneCell",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "canary:terminal:edge": "pnpm run build && TERMINAL_CHANNEL=true DEFAULT_EXECUTION_MODE=edge EDGE_RUNNER_MODE=edgejs EDGE_RUNNER_PROVIDER=anthropic node dist/index.js",
+    "canary:terminal:openai": "pnpm run build && TERMINAL_CHANNEL=true DEFAULT_EXECUTION_MODE=edge EDGE_RUNNER_MODE=edgejs EDGE_RUNNER_PROVIDER=openai EDGE_ENABLE_TOOLS=true node dist/index.js",
+    "dogfood:terminal": "pnpm run build && TERMINAL_CHANNEL=true DEFAULT_EXECUTION_MODE=edge TERMINAL_GROUP_EXECUTION_MODE=edge EDGE_RUNNER_MODE=edgejs EDGE_RUNNER_PROVIDER=openai EDGE_ENABLE_TOOLS=true MAX_CONCURRENT_CONTAINERS=5 node dist/index.js",
+    "canary:terminal:stub": "pnpm run build && TERMINAL_CHANNEL=true DEFAULT_EXECUTION_MODE=edge EDGE_RUNNER_MODE=edgejs EDGE_RUNNER_PROVIDER=local node dist/index.js",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:fix": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "prepare": "husky",
+    "setup": "tsx setup/index.ts",
+    "auth": "tsx src/whatsapp-auth.ts",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@onecell/edgejs": "workspace:*",
+    "@onecli-sh/sdk": "^0.2.0",
+    "better-sqlite3": "11.10.0",
+    "cron-parser": "5.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.35.0",
+    "eslint-plugin-no-catch-all": "^1.1.0",
+    "globals": "^15.12.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.8.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.35.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

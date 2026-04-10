@@ -1,0 +1,14 @@
+[submodule "node"]
+	path = node
+	url = https://github.com/nodejs/node.git
+	branch = v24.x
+[submodule "test"]
+	path = test
+	url = https://github.com/wasmerio/node-test.git
+[submodule "wasmer-examples"]
+	path = wasmer-examples
+	url = git@github.com:wasmerio/examples.git
+[submodule "napi"]
+	path = napi
+	url = git@github.com:wasmerio/napi.git
+	branch = main
