@@ -4,14 +4,6 @@ import {
   ExecutionRequest,
   WorkspaceOverlay,
 } from './agent-backend.js';
-import {
-  EDGE_ANTHROPIC_API_BASE_URL,
-  EDGE_ANTHROPIC_API_KEY,
-  EDGE_ANTHROPIC_MODEL,
-  EDGE_API_BASE_URL,
-  EDGE_API_KEY,
-  EDGE_MODEL,
-} from './config.js';
 import { getEdgeHostBridge } from './edge-host-bridge.js';
 
 export interface EdgeRunner {
@@ -896,14 +888,10 @@ class AnthropicEdgeRunner implements EdgeRunner {
         at: new Date().toISOString(),
       };
 
-      const apiKey =
-        request.runner?.apiKey ||
-        EDGE_ANTHROPIC_API_KEY ||
-        process.env.EDGE_ANTHROPIC_API_KEY ||
-        process.env.ANTHROPIC_API_KEY;
+      const apiKey = request.runner?.apiKey;
       if (!apiKey) {
         const message =
-          'Missing EDGE_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY for edge runner.';
+          'Missing apiKey for Anthropic edge runner.';
         yield {
           type: 'error',
           executionId: request.executionId,
@@ -924,7 +912,6 @@ class AnthropicEdgeRunner implements EdgeRunner {
 
       const baseUrl = (
         request.runner?.apiBaseUrl ||
-        EDGE_ANTHROPIC_API_BASE_URL ||
         'https://api.anthropic.com'
       ).replace(/\/+$/, '');
       const response = yield* withHeartbeatWhilePending({
@@ -939,7 +926,7 @@ class AnthropicEdgeRunner implements EdgeRunner {
               'x-api-key': apiKey,
             },
             body: JSON.stringify({
-              model: request.runner?.model || EDGE_ANTHROPIC_MODEL,
+              model: request.runner?.model || 'claude-sonnet-4-20250514',
               max_tokens: 1024,
               system: buildAnthropicSystemPrompt(request),
               messages,
@@ -1178,11 +1165,10 @@ class OpenAiCompatibleEdgeRunner implements EdgeRunner {
         at: new Date().toISOString(),
       };
 
-      const apiKey =
-        request.runner?.apiKey || EDGE_API_KEY || process.env.OPENAI_API_KEY;
+      const apiKey = request.runner?.apiKey;
       if (!apiKey) {
         const message =
-          'Missing EDGE_API_KEY or OPENAI_API_KEY for openai-compatible edge runner.';
+          'Missing apiKey for OpenAI-compatible edge runner.';
         yield {
           type: 'error',
           executionId: request.executionId,
@@ -1203,10 +1189,9 @@ class OpenAiCompatibleEdgeRunner implements EdgeRunner {
 
       const baseUrl = (
         request.runner?.apiBaseUrl ||
-        EDGE_API_BASE_URL ||
         'https://api.openai.com/v1'
       ).replace(/\/+$/, '');
-      const model = request.runner?.model || EDGE_MODEL || 'gpt-4o-mini';
+      const model = request.runner?.model || 'gpt-4o-mini';
       const response = yield* withHeartbeatWhilePending({
         executionId: request.executionId,
         signal,
