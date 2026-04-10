@@ -1,32 +1,57 @@
 import path from 'path';
 
 import { readEnvFile } from './env.js';
-import { resolveExecutionMode } from './execution-mode.js';
+import { loadConfigFile, type ResolvedNanoclawConfig } from './config-loader.js';
 import { resolveShadowExecutionMode } from './shadow-execution.js';
 import { isValidTimezone } from './timezone.js';
 
-// Read config values from .env (falls back to process.env).
+// ---------------------------------------------------------------------------
+// New config system
+// ---------------------------------------------------------------------------
+
+let _appConfig: ResolvedNanoclawConfig | null = null;
+
+export function initConfig(configPath: string): ResolvedNanoclawConfig {
+  _appConfig = loadConfigFile(configPath);
+
+  // Overwrite mutable exports with resolved config values.
+  DEFAULT_EXECUTION_MODE = _appConfig.executionMode;
+  EDGE_RUNNER_MODE = _appConfig.edgeRunnerMode;
+  EDGE_ENABLE_TOOLS = _appConfig.edge.enableTools;
+  EDGE_DISABLE_FALLBACK = _appConfig.edge.disableFallback;
+  TERMINAL_CHANNEL_ENABLED = _appConfig.profile === 'terminal';
+  TERMINAL_GROUP_EXECUTION_MODE = _appConfig.executionMode;
+
+  // Backward-compat provider exports derived from the resolved config.
+  EDGE_ANTHROPIC_API_KEY = _appConfig.edgeProvider.apiKey ?? undefined;
+  EDGE_ANTHROPIC_API_BASE_URL = _appConfig.edgeProvider.baseUrl ?? undefined;
+  EDGE_ANTHROPIC_MODEL = _appConfig.edgeProvider.model ?? undefined;
+  EDGE_API_KEY = _appConfig.edgeProvider.apiKey ?? undefined;
+  EDGE_API_BASE_URL = _appConfig.edgeProvider.baseUrl ?? undefined;
+  EDGE_MODEL = _appConfig.edgeProvider.model ?? undefined;
+
+  const cp = _appConfig.containerProvider;
+  ANTHROPIC_API_KEY = cp.apiKey ?? undefined;
+  ANTHROPIC_BASE_URL = cp.baseUrl ?? undefined;
+  ANTHROPIC_MODEL = cp.model ?? undefined;
+
+  return _appConfig;
+}
+
+export function getAppConfig(): ResolvedNanoclawConfig {
+  if (!_appConfig) throw new Error('Config not initialized. Call initConfig() first.');
+  return _appConfig;
+}
+
+// ---------------------------------------------------------------------------
+// Env file — only read keys that are still env-var-driven.
+// ---------------------------------------------------------------------------
+
 const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
-  'ANTHROPIC_BASE_URL',
-  'ANTHROPIC_API_KEY',
-  'ANTHROPIC_MODEL',
-  'DEFAULT_EXECUTION_MODE',
   'EDGEJS_BIN',
-  'EDGE_API_BASE_URL',
-  'EDGE_API_KEY',
-  'EDGE_MODEL',
-  'EDGE_ANTHROPIC_API_BASE_URL',
-  'EDGE_ANTHROPIC_API_KEY',
-  'EDGE_ANTHROPIC_MODEL',
-  'EDGE_RUNNER_MODE',
-  'EDGE_RUNNER_PROVIDER',
-  'EDGE_ENABLE_TOOLS',
-  'EDGE_DISABLE_FALLBACK',
   'SHADOW_EXECUTION_MODE',
-  'TERMINAL_CHANNEL',
-  'TERMINAL_GROUP_EXECUTION_MODE',
   'TERMINAL_GROUP_FOLDER',
   'TERMINAL_GROUP_JID',
   'TERMINAL_GROUP_NAME',
@@ -36,6 +61,10 @@ const envConfig = readEnvFile([
   'ONECLI_URL',
   'TZ',
 ]);
+
+// ---------------------------------------------------------------------------
+// Constants from env vars (unchanged)
+// ---------------------------------------------------------------------------
 
 export const ASSISTANT_NAME =
   process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
@@ -77,74 +106,14 @@ export const DATA_DIR = path.resolve(
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
-export const ANTHROPIC_BASE_URL =
-  process.env.ANTHROPIC_BASE_URL || envConfig.ANTHROPIC_BASE_URL || undefined;
-export const ANTHROPIC_API_KEY =
-  process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || undefined;
-export const ANTHROPIC_MODEL =
-  process.env.ANTHROPIC_MODEL || envConfig.ANTHROPIC_MODEL || undefined;
-export const EDGE_RUNNER_MODE =
-  process.env.EDGE_RUNNER_MODE || envConfig.EDGE_RUNNER_MODE || 'node';
-export const EDGE_RUNNER_PROVIDER =
-  process.env.EDGE_RUNNER_PROVIDER || envConfig.EDGE_RUNNER_PROVIDER || 'local';
-export const EDGE_ENABLE_TOOLS =
-  (process.env.EDGE_ENABLE_TOOLS || envConfig.EDGE_ENABLE_TOOLS) === 'true';
-export const EDGE_DISABLE_FALLBACK =
-  (process.env.EDGE_DISABLE_FALLBACK || envConfig.EDGE_DISABLE_FALLBACK) ===
-  'true';
+
 export const EDGEJS_BIN =
   process.env.EDGEJS_BIN || envConfig.EDGEJS_BIN || undefined;
-export const EDGE_API_BASE_URL =
-  process.env.EDGE_API_BASE_URL || envConfig.EDGE_API_BASE_URL || undefined;
-export const EDGE_API_KEY =
-  process.env.EDGE_API_KEY || envConfig.EDGE_API_KEY || undefined;
-export const EDGE_MODEL =
-  process.env.EDGE_MODEL || envConfig.EDGE_MODEL || undefined;
-export const EDGE_ANTHROPIC_API_BASE_URL =
-  process.env.EDGE_ANTHROPIC_API_BASE_URL ||
-  envConfig.EDGE_ANTHROPIC_API_BASE_URL ||
-  undefined;
-export const EDGE_ANTHROPIC_API_KEY =
-  process.env.EDGE_ANTHROPIC_API_KEY ||
-  envConfig.EDGE_ANTHROPIC_API_KEY ||
-  undefined;
-export const EDGE_ANTHROPIC_MODEL =
-  process.env.EDGE_ANTHROPIC_MODEL ||
-  envConfig.EDGE_ANTHROPIC_MODEL ||
-  'claude-sonnet-4-20250514';
-export const DEFAULT_EXECUTION_MODE = resolveExecutionMode(
-  process.env.DEFAULT_EXECUTION_MODE || envConfig.DEFAULT_EXECUTION_MODE,
-  'container',
-);
+
 export const SHADOW_EXECUTION_MODE = resolveShadowExecutionMode(
   process.env.SHADOW_EXECUTION_MODE || envConfig.SHADOW_EXECUTION_MODE,
 );
-export const TERMINAL_CHANNEL_ENABLED =
-  (process.env.TERMINAL_CHANNEL || envConfig.TERMINAL_CHANNEL) === 'true';
-export const TERMINAL_GROUP_JID =
-  process.env.TERMINAL_GROUP_JID ||
-  envConfig.TERMINAL_GROUP_JID ||
-  'term:canary-group';
-export const TERMINAL_GROUP_NAME =
-  process.env.TERMINAL_GROUP_NAME ||
-  envConfig.TERMINAL_GROUP_NAME ||
-  'Terminal Canary';
-export const TERMINAL_RESET_SESSION_ON_START =
-  (process.env.TERMINAL_RESET_SESSION_ON_START ||
-    envConfig.TERMINAL_RESET_SESSION_ON_START) === 'true';
-export const TERMINAL_GROUP_FOLDER =
-  process.env.TERMINAL_GROUP_FOLDER ||
-  envConfig.TERMINAL_GROUP_FOLDER ||
-  'terminal_canary';
-export const TERMINAL_GROUP_EXECUTION_MODE = resolveExecutionMode(
-  process.env.TERMINAL_GROUP_EXECUTION_MODE ||
-    envConfig.TERMINAL_GROUP_EXECUTION_MODE,
-  'edge',
-);
-export const TERMINAL_USER_JID =
-  process.env.TERMINAL_USER_JID || envConfig.TERMINAL_USER_JID || 'term:user';
-export const TERMINAL_USER_NAME =
-  process.env.TERMINAL_USER_NAME || envConfig.TERMINAL_USER_NAME || 'You';
+
 export const CONTAINER_TIMEOUT = parseInt(
   process.env.CONTAINER_TIMEOUT || '1800000',
   10,
@@ -160,11 +129,67 @@ export const MAX_MESSAGES_PER_PROMPT = Math.max(
   parseInt(process.env.MAX_MESSAGES_PER_PROMPT || '10', 10) || 10,
 );
 export const IPC_POLL_INTERVAL = 1000;
-export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min default — how long to keep container alive after last result
+export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min default
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,
 );
+
+// ---------------------------------------------------------------------------
+// Terminal identity (unchanged, from env vars)
+// ---------------------------------------------------------------------------
+
+export const TERMINAL_GROUP_JID =
+  process.env.TERMINAL_GROUP_JID ||
+  envConfig.TERMINAL_GROUP_JID ||
+  'term:canary-group';
+export const TERMINAL_GROUP_NAME =
+  process.env.TERMINAL_GROUP_NAME ||
+  envConfig.TERMINAL_GROUP_NAME ||
+  'Terminal Canary';
+export const TERMINAL_RESET_SESSION_ON_START =
+  (process.env.TERMINAL_RESET_SESSION_ON_START ||
+    envConfig.TERMINAL_RESET_SESSION_ON_START) === 'true';
+export const TERMINAL_GROUP_FOLDER =
+  process.env.TERMINAL_GROUP_FOLDER ||
+  envConfig.TERMINAL_GROUP_FOLDER ||
+  'terminal_canary';
+export const TERMINAL_USER_JID =
+  process.env.TERMINAL_USER_JID || envConfig.TERMINAL_USER_JID || 'term:user';
+export const TERMINAL_USER_NAME =
+  process.env.TERMINAL_USER_NAME || envConfig.TERMINAL_USER_NAME || 'You';
+
+// ---------------------------------------------------------------------------
+// Mutable exports — set by initConfig(), safe defaults before initialization
+// ---------------------------------------------------------------------------
+
+export let DEFAULT_EXECUTION_MODE: 'edge' | 'container' | 'auto' = 'edge';
+export let EDGE_RUNNER_MODE: string = 'edgejs';
+export let EDGE_ENABLE_TOOLS: boolean = true;
+export let EDGE_DISABLE_FALLBACK: boolean = false;
+export let TERMINAL_CHANNEL_ENABLED: boolean = true;
+export let TERMINAL_GROUP_EXECUTION_MODE: 'edge' | 'container' | 'auto' = 'edge';
+
+// ---------------------------------------------------------------------------
+// Backward-compat provider exports — set by initConfig()
+// These are kept so existing consumers (edge-runner, container-runner) keep
+// working without changes. They will be removed once those consumers are
+// migrated to read from getAppConfig() directly.
+// ---------------------------------------------------------------------------
+
+export let EDGE_ANTHROPIC_API_KEY: string | undefined = undefined;
+export let EDGE_ANTHROPIC_API_BASE_URL: string | undefined = undefined;
+export let EDGE_ANTHROPIC_MODEL: string | undefined = undefined;
+export let EDGE_API_KEY: string | undefined = undefined;
+export let EDGE_API_BASE_URL: string | undefined = undefined;
+export let EDGE_MODEL: string | undefined = undefined;
+export let ANTHROPIC_API_KEY: string | undefined = undefined;
+export let ANTHROPIC_BASE_URL: string | undefined = undefined;
+export let ANTHROPIC_MODEL: string | undefined = undefined;
+
+// ---------------------------------------------------------------------------
+// Trigger patterns (unchanged)
+// ---------------------------------------------------------------------------
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -183,8 +208,10 @@ export function getTriggerPattern(trigger?: string): RegExp {
 
 export const TRIGGER_PATTERN = buildTriggerPattern(DEFAULT_TRIGGER);
 
-// Timezone for scheduled tasks, message formatting, etc.
-// Validates each candidate is a real IANA identifier before accepting.
+// ---------------------------------------------------------------------------
+// Timezone (unchanged)
+// ---------------------------------------------------------------------------
+
 function resolveConfigTimezone(): string {
   const candidates = [
     process.env.TZ,
