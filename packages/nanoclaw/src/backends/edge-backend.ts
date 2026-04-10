@@ -22,12 +22,7 @@ import { createPersistentExecutionEventHooks } from '../edge-event-dispatcher.js
 import { localEdgeRunner, type EdgeRunner } from '../edge-runner.js';
 import { createSubprocessEdgeRunner } from '../edge-subprocess-runner.js';
 import { RegisteredGroup } from '../types.js';
-import {
-  EDGE_API_BASE_URL,
-  EDGE_API_KEY,
-  EDGE_MODEL,
-  EDGE_RUNNER_PROVIDER,
-} from '../config.js';
+import { getAppConfig } from '../config.js';
 import {
   ensureWorkspaceVersion,
   getWorkspaceManifest,
@@ -242,6 +237,7 @@ function buildExecutionRequest(
   group: RegisteredGroup,
   input: AgentRunInput,
 ): ExecutionRequest {
+  const config = getAppConfig();
   const baseWorkspaceVersion =
     input.executionContext?.baseWorkspaceVersion ??
     ensureWorkspaceVersion(group.folder);
@@ -333,14 +329,10 @@ function buildExecutionRequest(
       maxOutputBytes: EDGE_MAX_OUTPUT_BYTES,
     },
     runner: {
-      provider:
-        EDGE_RUNNER_PROVIDER === 'anthropic' ||
-        EDGE_RUNNER_PROVIDER === 'openai'
-          ? EDGE_RUNNER_PROVIDER
-          : 'local',
-      ...(EDGE_API_BASE_URL ? { apiBaseUrl: EDGE_API_BASE_URL } : {}),
-      ...(EDGE_API_KEY ? { apiKey: EDGE_API_KEY } : {}),
-      ...(EDGE_MODEL ? { model: EDGE_MODEL } : {}),
+      provider: config.edgeProvider.type,
+      ...(config.edgeProvider.baseUrl ? { apiBaseUrl: config.edgeProvider.baseUrl } : {}),
+      ...(config.edgeProvider.apiKey ? { apiKey: config.edgeProvider.apiKey } : {}),
+      ...(config.edgeProvider.model ? { model: config.edgeProvider.model } : {}),
     },
     policy: {
       allowedTools,
