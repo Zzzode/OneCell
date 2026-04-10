@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkWorker } from './framework-worker.js';
 import type { RegisteredGroup } from './types.js';
-import { cleanupTestConfig, initTestConfig, writeTestConfigFile } from './test-config.js';
+import {
+  cleanupTestConfig,
+  initTestConfig,
+  writeTestConfigFile,
+} from './test-config.js';
 
 describe('team orchestrator', () => {
   let tempRoot: string;

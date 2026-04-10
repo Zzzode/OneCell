@@ -890,8 +890,7 @@ class AnthropicEdgeRunner implements EdgeRunner {
 
       const apiKey = request.runner?.apiKey;
       if (!apiKey) {
-        const message =
-          'Missing apiKey for Anthropic edge runner.';
+        const message = 'Missing apiKey for Anthropic edge runner.';
         yield {
           type: 'error',
           executionId: request.executionId,
@@ -911,8 +910,7 @@ class AnthropicEdgeRunner implements EdgeRunner {
       }
 
       const baseUrl = (
-        request.runner?.apiBaseUrl ||
-        'https://api.anthropic.com'
+        request.runner?.apiBaseUrl || 'https://api.anthropic.com'
       ).replace(/\/+$/, '');
       const response = yield* withHeartbeatWhilePending({
         executionId: request.executionId,
@@ -1167,8 +1165,7 @@ class OpenAiCompatibleEdgeRunner implements EdgeRunner {
 
       const apiKey = request.runner?.apiKey;
       if (!apiKey) {
-        const message =
-          'Missing apiKey for OpenAI-compatible edge runner.';
+        const message = 'Missing apiKey for OpenAI-compatible edge runner.';
         yield {
           type: 'error',
           executionId: request.executionId,
@@ -1188,8 +1185,7 @@ class OpenAiCompatibleEdgeRunner implements EdgeRunner {
       }
 
       const baseUrl = (
-        request.runner?.apiBaseUrl ||
-        'https://api.openai.com/v1'
+        request.runner?.apiBaseUrl || 'https://api.openai.com/v1'
       ).replace(/\/+$/, '');
       const model = request.runner?.model || 'gpt-4o-mini';
       const response = yield* withHeartbeatWhilePending({

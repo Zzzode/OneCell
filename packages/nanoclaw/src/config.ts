@@ -1,9 +1,7 @@
 import path from 'path';
 
 import { readEnvFile } from './env.js';
-import {
-  loadConfigFile,
-} from './config-loader.js';
+import { loadConfigFile } from './config-loader.js';
 import type { ResolvedNanoclawConfig } from './nanoclaw-config.js';
 import { resolveShadowExecutionMode } from './shadow-execution.js';
 import { isValidTimezone } from './timezone.js';
