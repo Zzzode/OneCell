@@ -17,6 +17,6 @@
     }
   },
   "scripts": {
-    "build": "cmake --preset release -S ../.. && cmake --build --preset release"
+    "build": "cmake --preset release -S ../.. && cmake --build ../../build-release"
   }
 }

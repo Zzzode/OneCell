@@ -1,0 +1,136 @@
+name: Edgejs Native Verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'lib/**'
+      - 'deps/**'
+      - 'napi/**'
+      - 'wasix/**'
+      - 'packages/edgejs/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - '.gitmodules'
+      - '.github/workflows/edgejs-native.yml'
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: build-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Ensure submodules are initialized
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --recursive --depth=1
+          test -f napi/Cargo.toml
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libicu-dev
+
+      - name: Configure release build
+        run: cmake --preset release
+
+      - name: Build release runtime
+        run: cmake --build --preset release
+
+      - name: Run release tests
+        run: ctest --preset release
+
+      - name: Smoke test runtime version
+        run: ./build-release/edge --version
+
+  build-macos:
+    name: build-macos
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Ensure submodules are initialized
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --recursive --depth=1
+          test -f napi/Cargo.toml
+
+      - name: Install build dependencies
+        shell: bash
+        run: brew install ninja
+
+      - name: Configure release build
+        run: cmake --preset release
+
+      - name: Build release runtime
+        run: cmake --build --preset release
+
+      - name: Run release tests
+        run: ctest --preset release
+
+      - name: Smoke test runtime version
+        run: ./build-release/edge --version
+
+  wasix-smoke-linux:
+    name: wasix-smoke-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Ensure submodules are initialized
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --recursive --depth=1
+          test -f napi/cargo-standalone.sh
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libicu-dev
+
+      - name: Configure release build
+        run: cmake --preset release
+
+      - name: Install WASIX toolchain
+        uses: wasix-org/wasixcc@v0.4.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          sysroot-tag: v2026-02-16.1
+          version: v0.4.2
+
+      - name: Build WASIX runtime
+        run: cmake --build build-release --target build-wasix
+
+      - name: Build napi_wasmer CLI
+        run: cmake --build build-release --target build-napi-wasmer-cli
+
+      - name: Smoke test WASIX runtime via napi_wasmer
+        run: cmake --build build-release --target test-wasix-napi-cli
