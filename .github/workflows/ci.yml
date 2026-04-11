@@ -7,6 +7,8 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -15,13 +17,17 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Format check
         run: pnpm run format:check
 
-      - name: Typecheck nanoclaw
-        run: pnpm --filter @onecell/nanoclaw run typecheck
+      - name: Lint
+        run: pnpm run lint
 
-      - name: Tests
-        run: pnpm test
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test nanoclaw
+        run: pnpm --filter @onecell/nanoclaw run test
