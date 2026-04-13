@@ -3,7 +3,6 @@ import { Box, Text } from 'ink'
 import { getTheme, resolveTheme } from './theme.js'
 import { StatusBar } from './components/status-bar.js'
 import { Transcript } from './components/transcript.js'
-import { PromptBar } from './components/prompt-bar.js'
 import { Spinner } from './components/spinner.js'
 import type { TerminalPanelTranscriptEntry } from './terminal-panel.js'
 
@@ -114,7 +113,11 @@ export function TerminalApp({
       )}
 
       <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
-      <PromptBar />
+      <Box>
+        <Text> </Text>
+        <Text color={theme.text}>› </Text>
+        <Text color={theme.subtle}>{busy ? 'processing...' : 'Type your message...'}</Text>
+      </Box>
     </Box>
   )
 }
