@@ -7,6 +7,7 @@ import type { TaskNodeRecord } from '../db.js';
 // requires patch-console which depends on console.Console constructor.
 const inkHarness = vi.hoisted(() => {
   let renderToStringFn: ((element: React.ReactElement) => string) | null = null;
+  let lastProps: Record<string, unknown> = {};
 
   return {
     setRenderToString(fn: (element: React.ReactElement) => string) {
@@ -14,6 +15,17 @@ const inkHarness = vi.hoisted(() => {
     },
     getRenderToString() {
       return renderToStringFn;
+    },
+    getLastProps() {
+      return lastProps;
+    },
+    captureProps(element: React.ReactElement) {
+      if (element.props && typeof element.props === 'object') {
+        lastProps = element.props as Record<string, unknown>;
+      }
+    },
+    reset() {
+      lastProps = {};
     },
   };
 });
@@ -23,10 +35,12 @@ vi.mock('ink', async () => {
   return {
     ...actual,
     render(element: React.ReactElement, _options?: Record<string, unknown>) {
+      inkHarness.captureProps(element);
       const output = inkHarness.getRenderToString()?.(element) ?? '';
       process.stdout.write(output);
       return {
         rerender(newElement: React.ReactElement) {
+          inkHarness.captureProps(newElement);
           const newOutput = inkHarness.getRenderToString()?.(newElement) ?? '';
           process.stdout.write(newOutput);
         },
@@ -40,47 +54,6 @@ vi.mock('ink', async () => {
     },
   };
 });
-
-const readlineHarness = vi.hoisted(() => {
-  let lineHandler: ((line: string) => void) | null = null;
-  const rl = {
-    setPrompt: vi.fn(),
-    prompt: vi.fn(),
-    on: vi.fn((event: string, handler: (line: string) => void) => {
-      if (event === 'line') {
-        lineHandler = handler;
-      }
-      return rl;
-    }),
-    pause: vi.fn(),
-    resume: vi.fn(),
-    close: vi.fn(),
-  };
-
-  return {
-    createInterface: vi.fn(() => rl),
-    rl,
-    emitLine(line: string) {
-      lineHandler?.(line);
-    },
-    reset() {
-      lineHandler = null;
-      rl.setPrompt.mockReset();
-      rl.prompt.mockReset();
-      rl.on.mockClear();
-      rl.pause.mockReset();
-      rl.resume.mockReset();
-      rl.close.mockReset();
-      this.createInterface.mockClear();
-    },
-  };
-});
-
-vi.mock('readline', () => ({
-  default: {
-    createInterface: readlineHarness.createInterface,
-  },
-}));
 
 vi.mock('../config.js', () => ({
   ASSISTANT_NAME: 'Andy',
@@ -185,9 +158,30 @@ import {
   setTerminalFocus,
 } from '../terminal-observability.js';
 
+/** Simulate a line submission by extracting the onSubmit callback from the last rendered TerminalApp props. */
+function submitLine(text: string): void {
+  const props = inkHarness.getLastProps();
+  const onSubmit = props.onSubmit as ((text: string) => void) | undefined;
+  onSubmit?.(text);
+}
+
+/** Simulate an Escape keypress by extracting the onEscape callback from the last rendered TerminalApp props. */
+function pressEscape(): void {
+  const props = inkHarness.getLastProps();
+  const onEscape = props.onEscape as (() => void) | undefined;
+  onEscape?.();
+}
+
+/** Simulate Shift+Down by extracting the onShiftDown callback. */
+function pressShiftDown(): void {
+  const props = inkHarness.getLastProps();
+  const onShiftDown = props.onShiftDown as (() => void) | undefined;
+  onShiftDown?.();
+}
+
 describe('terminal ui helpers', () => {
   beforeEach(() => {
-    readlineHarness.reset();
+    inkHarness.reset();
     resetTerminalEventLogForTests();
     inkHarness.setRenderToString(renderToString);
     vi.mocked(buildTerminalAgentsSummaryFromObservability).mockReturnValue(
@@ -659,7 +653,7 @@ describe('terminal ui helpers', () => {
       await channel!.connect();
       const writeCountAfterConnect = writeSpy.mock.calls.length;
 
-      readlineHarness.emitLine('/tasks');
+      submitLine('/tasks');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(writeSpy.mock.calls.length).toBeGreaterThan(
@@ -695,7 +689,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/task');
+      submitLine('/task');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
@@ -726,7 +720,7 @@ describe('terminal ui helpers', () => {
     expect(channel).not.toBeNull();
     await channel!.connect();
 
-    readlineHarness.emitLine('/new');
+    submitLine('/new');
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onResetSession).toHaveBeenCalledWith('terminal_canary');
@@ -753,7 +747,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/retry-container');
+      submitLine('/retry-container');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(onRetryContainer).toHaveBeenCalledWith('terminal_canary');
@@ -787,7 +781,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/retry-container');
+      submitLine('/retry-container');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(onRetryContainer).toHaveBeenCalledWith('terminal_canary');
@@ -815,7 +809,7 @@ describe('terminal ui helpers', () => {
     expect(channel).not.toBeNull();
     await channel!.connect();
 
-    readlineHarness.emitLine('/focus worker 2');
+    submitLine('/focus worker 2');
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(setTerminalFocus).toHaveBeenCalledWith('worker 2');
@@ -823,10 +817,6 @@ describe('terminal ui helpers', () => {
   });
 
   it('cycles focus on Shift+Down escape sequence', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
     vi.mocked(cycleTerminalFocus).mockReturnValue('worker 2');
     vi.mocked(buildTerminalFocusSummary).mockReturnValue('focus: worker 2');
     const writeSpy = vi
@@ -844,7 +834,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      process.stdin.emit('data', Buffer.from('\u001b[1;2B'));
+      pressShiftDown();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(cycleTerminalFocus).toHaveBeenCalledWith(1);
@@ -879,7 +869,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/quit');
+      submitLine('/quit');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(onQuit).toHaveBeenCalledWith('terminal_canary');
@@ -908,7 +898,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/exit');
+      submitLine('/exit');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(onQuit).toHaveBeenCalledWith('terminal_canary');
@@ -936,7 +926,7 @@ describe('terminal ui helpers', () => {
       await channel!.connect();
       const writeCountAfterConnect = writeSpy.mock.calls.length;
 
-      readlineHarness.emitLine('/agents');
+      submitLine('/agents');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(writeSpy.mock.calls.length).toBeGreaterThan(
@@ -1075,7 +1065,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('你好');
+      submitLine('你好');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       emitTerminalSystemEvent(
@@ -1113,7 +1103,7 @@ describe('terminal ui helpers', () => {
       await channel!.connect();
       await channel!.sendMessage?.('term:canary-group', '旧回复');
 
-      readlineHarness.emitLine('/new');
+      submitLine('/new');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
@@ -1142,7 +1132,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/help');
+      submitLine('/help');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
@@ -1181,7 +1171,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/logs 1');
+      submitLine('/logs 1');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
@@ -1213,7 +1203,7 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/status');
+      submitLine('/status');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
@@ -1231,10 +1221,6 @@ describe('terminal ui helpers', () => {
   });
 
   it('dismisses help overlay on ESC before calling onCancel', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
     vi.mocked(listExecutionStates).mockReturnValue([]);
     vi.mocked(listTaskGraphs).mockReturnValue([]);
     const onCancel = vi.fn();
@@ -1254,10 +1240,10 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('/help');
+      submitLine('/help');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      process.stdin.emit('data', Buffer.from([0x1b]));
+      pressEscape();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
@@ -1274,10 +1260,6 @@ describe('terminal ui helpers', () => {
   });
 
   it('dismisses drawer then side panel on ESC before interrupting active work', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
     const onCancel = vi.fn();
     const writeSpy = vi
       .spyOn(process.stdout, 'write')
@@ -1296,12 +1278,12 @@ describe('terminal ui helpers', () => {
       await channel!.connect();
       await channel!.setTyping?.('term:canary-group', true);
 
-      readlineHarness.emitLine('/status');
+      submitLine('/status');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      readlineHarness.emitLine('/logs 1');
+      submitLine('/logs 1');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      process.stdin.emit('data', Buffer.from([0x1b]));
+      pressEscape();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const afterFirstEsc = String(
@@ -1311,7 +1293,7 @@ describe('terminal ui helpers', () => {
       expect(afterFirstEsc).not.toContain('Logs');
       expect(onCancel).not.toHaveBeenCalled();
 
-      process.stdin.emit('data', Buffer.from([0x1b]));
+      pressEscape();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const afterSecondEsc = String(
@@ -1320,7 +1302,7 @@ describe('terminal ui helpers', () => {
       expect(afterSecondEsc).not.toContain('Details · Turn');
       expect(onCancel).not.toHaveBeenCalled();
 
-      process.stdin.emit('data', Buffer.from([0x1b]));
+      pressEscape();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const afterThirdEsc = String(
@@ -1351,13 +1333,13 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      readlineHarness.emitLine('keep this transcript');
+      submitLine('keep this transcript');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      readlineHarness.emitLine('/help');
+      submitLine('/help');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      readlineHarness.emitLine('/logs 1');
+      submitLine('/logs 1');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      readlineHarness.emitLine('/clear');
+      submitLine('/clear');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
@@ -1376,10 +1358,6 @@ describe('terminal ui helpers', () => {
   });
 
   it('triggers onCancel when ESC is pressed during active typing', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
     const onCancel = vi.fn();
     const factory = getChannelFactory('terminal');
     const channel = factory!({
@@ -1394,7 +1372,7 @@ describe('terminal ui helpers', () => {
 
     await channel!.setTyping?.('term:canary-group', true);
 
-    process.stdin.emit('data', Buffer.from([0x1b]));
+    pressEscape();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onCancel).toHaveBeenCalledWith('terminal_canary');
@@ -1402,10 +1380,6 @@ describe('terminal ui helpers', () => {
   });
 
   it('triggers onCancel when ESC is pressed with running executions', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
     vi.mocked(listExecutionStates).mockReturnValue([
       {
         executionId: 'exec-running',
@@ -1441,7 +1415,7 @@ describe('terminal ui helpers', () => {
     expect(channel).not.toBeNull();
     await channel!.connect();
 
-    process.stdin.emit('data', Buffer.from([0x1b]));
+    pressEscape();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onCancel).toHaveBeenCalledWith('terminal_canary');
@@ -1449,10 +1423,6 @@ describe('terminal ui helpers', () => {
   });
 
   it('does not trigger onCancel when ESC is pressed while idle', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
     vi.mocked(listExecutionStates).mockReturnValue([]);
     vi.mocked(listTaskGraphs).mockReturnValue([]);
 
@@ -1468,18 +1438,14 @@ describe('terminal ui helpers', () => {
     expect(channel).not.toBeNull();
     await channel!.connect();
 
-    process.stdin.emit('data', Buffer.from([0x1b]));
+    pressEscape();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onCancel).not.toHaveBeenCalled();
     await channel!.disconnect();
   });
 
-  it('ignores escape sequences (arrow keys) and only responds to lone ESC', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
+  it('does not call onEscape when submitting normal input', async () => {
     const onCancel = vi.fn();
     const factory = getChannelFactory('terminal');
     const channel = factory!({
@@ -1493,7 +1459,10 @@ describe('terminal ui helpers', () => {
     await channel!.connect();
     await channel!.setTyping?.('term:canary-group', true);
 
-    process.stdin.emit('data', Buffer.from([0x1b, 0x5b, 0x41]));
+    // Submitting a line should not trigger onEscape (previously tested that
+    // arrow key escape sequences like \x1b[A were ignored; Ink's useInput now
+    // handles that internally by not reporting key.escape for arrow keys).
+    submitLine('hello');
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onCancel).not.toHaveBeenCalled();

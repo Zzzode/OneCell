@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useState, useCallback } from 'react'
 import { Box, Text } from 'ink'
 import { getTheme, resolveTheme } from './theme.js'
 import { StatusBar } from './components/status-bar.js'
 import { Transcript } from './components/transcript.js'
 import { Spinner } from './components/spinner.js'
+import { TextInput } from './components/text-input.js'
 import type { TerminalPanelTranscriptEntry } from './terminal-panel.js'
 
 const theme = getTheme(resolveTheme())
@@ -55,6 +56,10 @@ interface TerminalAppProps {
   chatJid?: string
   width?: number
   height?: number
+  onSubmit?: (text: string) => void
+  onEscape?: () => void
+  onShiftUp?: () => void
+  onShiftDown?: () => void
 }
 
 export function TerminalApp({
@@ -65,7 +70,21 @@ export function TerminalApp({
   drawer,
   overlay,
   width = 100,
+  onSubmit,
+  onEscape,
+  onShiftUp,
+  onShiftDown,
 }: TerminalAppProps) {
+  const [inputValue, setInputValue] = useState('')
+
+  const handleSubmit = useCallback(
+    (text: string) => {
+      setInputValue('')
+      onSubmit?.(text)
+    },
+    [onSubmit],
+  )
+
   return (
     <Box flexDirection="column" width={width}>
       <StatusBar
@@ -113,11 +132,16 @@ export function TerminalApp({
       )}
 
       <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
-      <Box>
-        <Text> </Text>
-        <Text color={theme.text}>› </Text>
-        <Text color={theme.subtle}>{busy ? 'processing...' : 'Type your message...'}</Text>
-      </Box>
+      <TextInput
+        value={inputValue}
+        onChange={setInputValue}
+        onSubmit={handleSubmit}
+        onEscape={onEscape ?? (() => {})}
+        onShiftUp={onShiftUp}
+        onShiftDown={onShiftDown}
+        busy={busy}
+        placeholder={busy ? 'processing...' : 'Type your message...'}
+      />
     </Box>
   )
 }
