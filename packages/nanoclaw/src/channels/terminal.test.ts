@@ -459,14 +459,15 @@ describe('terminal ui helpers', () => {
   });
 
   it('renders a compact status line with runtime counts', () => {
-    const line = buildTerminalStatusLine();
+    const line = buildTerminalStatusLine().replace(/\x1b\[[0-9;]*m/g, '');
 
-    expect(line).toContain('edge/edgejs');
+    expect(line).toContain('edge · edgejs');
     expect(line).toContain('openai-compatible');
     expect(line).toContain('glm-5');
-    expect(line).toContain('tools:on');
-    expect(line).toContain('group:terminal_canary');
-    expect(line).toContain('tasks:1 running/1 scheduled');
+    expect(line).toContain('terminal_canary');
+    expect(line).toContain('1 running');
+    expect(line).toContain('1 scheduled');
+    expect(line).not.toContain('tasks:1 running/1 scheduled');
   });
 
   it('renders task summaries with runtime status and next run', () => {
@@ -657,8 +658,8 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/task');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(finalFrame).toContain('side panel · tasks');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      expect(finalFrame).toContain('Details · Tasks');
       expect(finalFrame).toContain('当前没有任务。');
       expect(finalFrame).not.toContain('用法：/task');
 
@@ -1045,10 +1046,11 @@ describe('terminal ui helpers', () => {
       await channel!.sendMessage?.('term:canary-group', '已开始处理');
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(finalFrame).toContain('[ Transcript ]');
+      expect(finalFrame).toContain('Transcript');
       expect(finalFrame).toContain('你好');
       expect(finalFrame).toContain('team planner accepted fanout · 3 workers');
       expect(finalFrame).toContain('已开始处理');
+      expect(finalFrame).not.toContain('[ Transcript ]');
 
       await channel!.disconnect();
     } finally {
@@ -1087,7 +1089,7 @@ describe('terminal ui helpers', () => {
     }
   });
 
-  it('renders `/help` as an overlay-oriented surface instead of inspector copy', async () => {
+  it('renders `/help` as a grouped overlay with concise terminal wording', async () => {
     const writeSpy = vi
       .spyOn(process.stdout, 'write')
       .mockImplementation(() => true);
@@ -1106,14 +1108,17 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/help');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(finalFrame).toContain('overlay');
-      expect(finalFrame).not.toContain('Inspector: help');
-      expect(finalFrame).not.toContain('/clear  清空当前 inspector');
-      expect(finalFrame).toContain('/quit   退出终端');
+      const finalFrame = String(
+        writeSpy.mock.calls.at(-1)?.[0] ?? '',
+      ).replace(/\x1b\[[0-9;]*m/g, '');
+      expect(finalFrame).toContain('Help');
+      expect(finalFrame).toContain('Session');
+      expect(finalFrame).toContain('Focus');
+      expect(finalFrame).toContain('Tasks');
       expect(finalFrame).toContain(
-        'ESC 优先关闭 overlay，否则打断当前正在执行的对话',
+        'ESC 先关闭当前浮层；若无浮层则打断当前执行',
       );
+      expect(finalFrame).not.toContain('可用命令：');
 
       await channel!.disconnect();
     } finally {
@@ -1121,7 +1126,7 @@ describe('terminal ui helpers', () => {
     }
   });
 
-  it('renders `/logs` in a bottom drawer instead of inspector copy', async () => {
+  it('renders `/logs` with unified surface title', async () => {
     const writeSpy = vi
       .spyOn(process.stdout, 'write')
       .mockImplementation(() => true);
@@ -1141,10 +1146,11 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/logs 1');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(finalFrame).toContain('drawer');
-      expect(finalFrame).toContain('logs');
-      expect(finalFrame).not.toContain('Inspector: logs');
+      const finalFrame = String(
+        writeSpy.mock.calls.at(-1)?.[0] ?? '',
+      ).replace(/\x1b\[[0-9;]*m/g, '');
+      expect(finalFrame).toContain('Logs');
+      expect(finalFrame).not.toContain('drawer · logs');
 
       await channel!.disconnect();
     } finally {
@@ -1152,7 +1158,7 @@ describe('terminal ui helpers', () => {
     }
   });
 
-  it('renders `/status` in the right side panel instead of inspector copy', async () => {
+  it('renders `/status` with unified surface title', async () => {
     const writeSpy = vi
       .spyOn(process.stdout, 'write')
       .mockImplementation(() => true);
@@ -1171,8 +1177,11 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/status');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(finalFrame).toContain('turn');
+      const finalFrame = String(
+        writeSpy.mock.calls.at(-1)?.[0] ?? '',
+      ).replace(/\x1b\[[0-9;]*m/g, '');
+      expect(finalFrame).toContain('Details · Turn');
+      expect(finalFrame).not.toContain('side panel · turn');
       expect(finalFrame).not.toContain('Inspector: status');
 
       await channel!.disconnect();
@@ -1211,8 +1220,8 @@ describe('terminal ui helpers', () => {
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(finalFrame).not.toContain('overlay');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      expect(finalFrame).not.toContain('Help');
       expect(onCancel).not.toHaveBeenCalled();
 
       await channel!.disconnect();
@@ -1252,23 +1261,23 @@ describe('terminal ui helpers', () => {
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const afterFirstEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(afterFirstEsc).toContain('side panel · turn');
-      expect(afterFirstEsc).not.toContain('drawer · logs');
+      const afterFirstEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      expect(afterFirstEsc).toContain('Details · Turn');
+      expect(afterFirstEsc).not.toContain('Logs');
       expect(onCancel).not.toHaveBeenCalled();
 
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const afterSecondEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(afterSecondEsc).not.toContain('side panel · turn');
+      const afterSecondEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      expect(afterSecondEsc).not.toContain('Details · Turn');
       expect(onCancel).not.toHaveBeenCalled();
 
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const afterThirdEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(afterThirdEsc).toContain('overlay · interrupt');
+      const afterThirdEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      expect(afterThirdEsc).toContain('Interrupt');
       expect(onCancel).toHaveBeenCalledWith('terminal_canary');
 
       await channel!.disconnect();
@@ -1302,11 +1311,11 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/clear');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
       expect(finalFrame).toContain('keep this transcript');
-      expect(finalFrame).not.toContain('overlay');
-      expect(finalFrame).not.toContain('drawer');
-      expect(finalFrame).not.toContain('Inspector:');
+      expect(finalFrame).not.toContain('Help');
+      expect(finalFrame).not.toContain('Logs');
+      expect(finalFrame).not.toContain('Details');
 
       await channel!.disconnect();
     } finally {

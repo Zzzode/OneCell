@@ -44,6 +44,9 @@ import { registerChannel, type ChannelOpts } from './registry.js';
 
 const COLOR_DIM = '\x1b[90m';
 const COLOR_RESET = '\x1b[0m';
+const COLOR_ACCENT = '\x1b[38;5;111m';
+const COLOR_SUCCESS = '\x1b[38;5;114m';
+const COLOR_WARNING = '\x1b[38;5;179m';
 const TERMINAL_EVENT_LIMIT = 50;
 const TERMINAL_TRANSCRIPT_LIMIT = 80;
 const DEFAULT_LOG_TAIL = 12;
@@ -391,17 +394,23 @@ export function executeTerminalTaskCommand(args: string[]): string {
   }
 }
 
+function paint(text: string, color: string): string {
+  return `${color}${text}${COLOR_RESET}`;
+}
+
 export function buildTerminalStatusLine(): string {
   const { running, scheduled } = terminalTaskSnapshot();
-  const segments = [
-    `${TERMINAL_GROUP_EXECUTION_MODE}/${EDGE_RUNNER_MODE}`,
+  const left = [
+    `${TERMINAL_GROUP_EXECUTION_MODE} · ${EDGE_RUNNER_MODE}`,
     providerLabel(),
     modelLabel(),
-    `tools:${EDGE_ENABLE_TOOLS ? 'on' : 'off'}`,
-    `group:${TERMINAL_GROUP_FOLDER}`,
-    `tasks:${running} running/${scheduled} scheduled`,
+    TERMINAL_GROUP_FOLDER,
   ];
-  return `${COLOR_DIM}${segments.join(' · ')}${COLOR_RESET}`;
+  const right = [
+    paint(`${running} running`, running > 0 ? COLOR_SUCCESS : COLOR_DIM),
+    paint(`${scheduled} scheduled`, scheduled > 0 ? COLOR_WARNING : COLOR_DIM),
+  ];
+  return `${paint(left.join(' · '), COLOR_DIM)} ${paint('│', COLOR_DIM)} ${right.join(` ${paint('·', COLOR_DIM)} `)}`;
 }
 
 export function buildTerminalTasksSummary(): string {
@@ -709,25 +718,30 @@ class TerminalChannel implements Channel {
         this.openOverlay(
           'help',
           [
-            '可用命令：',
-            '/help  查看帮助',
-            '/status 查看当前状态',
-            '/agents 查看当前 team agents 状态',
-            '/graph 查看当前 team graph 明细',
-            '/focus <root|planner|worker N|aggregate|clear> 切换观察焦点',
-            '/tasks  查看当前任务',
-            '/task list 查看任务详情',
-            '/task pause <taskId> 暂停任务',
-            '/task resume <taskId> 恢复任务',
-            '/task delete <taskId> 删除任务',
-            '/new  清空当前 terminal provider session',
-            '/session clear 清空当前 terminal provider session',
-            '/logs [n] 查看最近系统事件',
-            '/clear  关闭辅助界面',
-            '/retry-container  在 container 上重试最近一次可重试 edge 失败',
-            'Shift+Up/Down 切换当前 focus agent',
-            'ESC 优先关闭 overlay，否则打断当前正在执行的对话',
-            '/quit   退出终端',
+            'Terminal commands',
+            '',
+            'Session',
+            '  /status  查看当前状态',
+            '  /new     清空当前 terminal provider session',
+            '  /session clear  清空当前 terminal provider session',
+            '',
+            'Focus',
+            '  /agents  查看当前 team agents 状态',
+            '  /graph   查看当前 team graph 明细',
+            '  /focus <root|planner|worker N|aggregate|clear>',
+            '  Shift+Up/Down  切换当前 focus agent',
+            '',
+            'Tasks',
+            '  /tasks   查看当前任务',
+            '  /task list|pause|resume|delete <taskId>',
+            '',
+            'Runtime',
+            '  /logs [n]  查看最近系统事件',
+            '  /retry-container  在 container 上重试最近一次可重试 edge 失败',
+            '  /clear  关闭辅助界面',
+            '  /quit   退出终端',
+            '',
+            'ESC 先关闭当前浮层；若无浮层则打断当前执行',
           ].join('\n'),
         );
         return true;
