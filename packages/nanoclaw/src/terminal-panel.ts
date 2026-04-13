@@ -18,6 +18,24 @@ interface TerminalFeedEntry {
   text: string;
 }
 
+const ANSI_RESET = '\x1b[0m';
+const ANSI_DIM = '\x1b[90m';
+const ANSI_TEXT = '\x1b[37m';
+const ANSI_ACCENT = '\x1b[38;5;111m';
+const ANSI_BORDER = '\x1b[38;5;240m';
+
+function tone(text: string, color: string): string {
+  return `${color}${text}${ANSI_RESET}`;
+}
+
+function rule(width: number): string {
+  return tone('─'.repeat(Math.max(1, width)), ANSI_BORDER);
+}
+
+function sectionTitle(title: string): string {
+  return tone(title, ANSI_ACCENT);
+}
+
 const DEFAULT_WIDTH = 100;
 const DEFAULT_HEIGHT = 28;
 const MIN_WIDTH = 48;
@@ -198,8 +216,8 @@ function section(
   maxWrapLines = 2,
   preserveSpacing = false,
 ): string[] {
-  const body = lines.length > 0 ? lines : ['empty'];
-  const output = [`[ ${title} ]`];
+  const body = lines.length > 0 ? lines : [tone('empty', ANSI_DIM)];
+  const output = [sectionTitle(title)];
   for (const line of body) {
     const wrapped = preserveSpacing
       ? [clampText(line, width)]
@@ -315,16 +333,17 @@ function buildAgentLines(
   const maxAgents = height < 28 ? 6 : 10;
   const now = Date.now();
   const lines = workers.slice(0, maxAgents).map((worker) => {
-    const marker = worker.key === turn.focusKey ? '>' : ' ';
+    const focused = worker.key === turn.focusKey;
+    const marker = focused ? tone('›', ANSI_ACCENT) : tone('·', ANSI_DIM);
+    const status = readableStatus(worker.status).padEnd(7);
+    const elapsed = elapsedSince(worker.startedAt ?? worker.updatedAt, now).padStart(4);
     const summary = worker.lastActivity ?? worker.summary ?? 'waiting';
-    return clampText(
-      `${marker} ${worker.label.padEnd(10)} ${readableStatus(worker.status).padEnd(7)} ${elapsedSince(worker.startedAt ?? worker.updatedAt, now).padStart(4)} ${summary}`,
-      width,
-    );
+    const line = `${marker} ${worker.label.padEnd(10)} ${status} ${elapsed} ${summary}`;
+    return focused ? tone(clampText(line, width), ANSI_TEXT) : clampText(line, width);
   });
 
   if (workers.length > maxAgents) {
-    lines.push(`+${workers.length - maxAgents} more agents hidden`);
+    lines.push(tone(`+${workers.length - maxAgents} more agents`, ANSI_DIM));
   }
 
   return lines;
@@ -355,13 +374,13 @@ function simplifyTimelineText(text: string): string {
 function speakerLabel(role: TerminalFeedEntry['role']): string {
   switch (role) {
     case 'user':
-      return 'you';
+      return tone('you', ANSI_TEXT);
     case 'assistant':
-      return 'andy';
+      return tone('andy', ANSI_ACCENT);
     case 'step':
-      return 'step';
+      return tone('step', ANSI_DIM);
     default:
-      return 'system';
+      return tone('system', ANSI_DIM);
   }
 }
 
@@ -423,19 +442,17 @@ function buildTranscriptLines(
   fallbacks?: Array<TerminalPanelTranscriptEntry | null>,
 ): string[] {
   const feed = buildTranscriptFeed(turn, focus, entries, height, fallbacks);
-  if (feed.length === 0) return ['No transcript yet.'];
+  if (feed.length === 0) return [tone('No transcript yet.', ANSI_DIM)];
   const maxEntries = height < 28 ? 8 : 12;
-  return feed
-    .slice(-maxEntries)
-    .map(
-      (entry) =>
-        `[${shortTime(entry.at)}] ${speakerLabel(entry.role)}> ${entry.text}`,
-    );
+  return feed.slice(-maxEntries).map((entry) => {
+    const time = tone(shortTime(entry.at), ANSI_DIM);
+    return `${time}  ${speakerLabel(entry.role)}  ${entry.text}`;
+  });
 }
 
 function buildFocusDetailLines(focus: TerminalWorkerState | null): string[] {
   if (!focus) {
-    return ['No focused worker.'];
+    return [tone('No focused worker.', ANSI_DIM)];
   }
 
   const lines = [
@@ -463,7 +480,7 @@ function buildRecentLines(
   const source =
     entries && entries.length > 0 ? entries : fallback ? [fallback] : [];
   if (source.length === 0) {
-    return [`No recent ${label} messages.`];
+    return [tone(`No recent ${label} messages.`, ANSI_DIM)];
   }
   return source
     .slice(-4)
@@ -472,7 +489,7 @@ function buildRecentLines(
 }
 
 function buildSurfaceLines(body: string | null | undefined): string[] {
-  if (!body) return ['empty'];
+  if (!body) return [tone('empty', ANSI_DIM)];
   return body.split('\n').map((line) => line.trimEnd());
 }
 
@@ -486,17 +503,16 @@ function renderFrame(options: {
   footer: string;
 }): string {
   const blocks = [
-    'NanoClaw Edge Canary',
-    stripAnsi(options.statusLine),
-    '-'.repeat(options.width),
+    tone('NanoClaw terminal', ANSI_TEXT),
+    options.statusLine,
+    rule(options.width),
     ...options.top,
-    '-'.repeat(options.width),
     ...mergeColumns(options.left, options.right, options.width),
   ];
   if (options.bottom && options.bottom.length > 0) {
-    blocks.push('-'.repeat(options.width), ...options.bottom);
+    blocks.push(rule(options.width), ...options.bottom);
   }
-  blocks.push('-'.repeat(options.width), options.footer);
+  blocks.push(rule(options.width), options.footer);
   return blocks.map((line) => clampText(line, options.width)).join('\n');
 }
 
@@ -545,7 +561,7 @@ function buildIdlePanel(options: {
   ];
   const right = [
     ...section(
-      'Recent System',
+      'Recent system',
       buildRecentLines(
         options.recentSystemEvents,
         options.latestSystemEvent,
@@ -597,7 +613,7 @@ function buildIdlePanel(options: {
     right,
     bottom,
     footer:
-      'Keys: Shift+Up/Down focus | ESC dismiss surface / interrupt | /logs raw events | /help',
+      'Shift+↑/↓ focus | ESC dismiss / interrupt | /logs raw events | /help',
   });
 }
 
@@ -657,7 +673,7 @@ export function buildTerminalPanel(options: {
     ...(failureLines.length > 0
       ? [
           ...section(
-            turn.fallback ? 'Failure / Fallback' : 'Failure',
+            'Attention',
             failureLines,
             Math.max(24, width),
             1,
@@ -731,6 +747,6 @@ export function buildTerminalPanel(options: {
     right,
     bottom,
     footer:
-      'Keys: Shift+Up/Down focus agent | ESC dismiss surface / interrupt | /focus <agent> | /logs raw events',
+      'Shift+↑/↓ focus agent | ESC dismiss / interrupt | /focus <agent> | /logs raw events',
   });
 }
