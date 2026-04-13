@@ -8,7 +8,7 @@ const theme = getTheme(resolveTheme())
 interface AgentListProps {
   workers: TerminalWorkerState[]
   focusKey: string
-  width: number
+  width?: number
 }
 
 function elapsedSince(value: string | null, now = Date.now()): string {
@@ -56,7 +56,7 @@ function workerSortRank(key: string): number {
   return 200
 }
 
-export function AgentList({ workers, focusKey, width }: AgentListProps) {
+export function AgentList({ workers, focusKey }: AgentListProps) {
   if (workers.length === 0) {
     return <Text color={theme.subtle}>  No agents</Text>
   }
