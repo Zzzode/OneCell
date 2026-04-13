@@ -593,6 +593,7 @@ class TerminalChannel implements Channel {
       input: process.stdin,
       output: process.stdout,
       terminal: true,
+      prompt: '  › ',
     });
 
     this.setupEscListener();
@@ -846,6 +847,8 @@ class TerminalChannel implements Channel {
 
   private renderScreen(_force = false): void {
     const busy = this.typingByJid.has(TERMINAL_GROUP_JID);
+    const prompt = busy ? '  … ' : '  › ';
+    this.rl?.setPrompt(prompt);
     const props = {
       backend: TERMINAL_GROUP_EXECUTION_MODE,
       busy,
@@ -865,6 +868,7 @@ class TerminalChannel implements Channel {
         exitOnCtrlC: false,
       });
     }
+    this.rl?.prompt(true);
   }
 
   private openSidePanel(tab: TerminalSidePanelTab, body: string): void {
