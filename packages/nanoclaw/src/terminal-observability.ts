@@ -247,9 +247,7 @@ function buildFocusState(turn: TerminalTurnState): TerminalWorkerState | null {
   return turn.workers.get(turn.focusKey) ?? turn.workers.get('root') ?? null;
 }
 
-export function getTerminalActiveTurnSnapshot(
-  chatJid = TERMINAL_GROUP_JID,
-): {
+export function getTerminalActiveTurnSnapshot(chatJid = TERMINAL_GROUP_JID): {
   graphId: string;
   status: TerminalTurnStatus;
   stage: string;
@@ -350,9 +348,7 @@ export function getTerminalFocusedTimelineSnapshot(
   };
 }
 
-export function getTerminalFallbackSnapshot(
-  chatJid = TERMINAL_GROUP_JID,
-): {
+export function getTerminalFallbackSnapshot(chatJid = TERMINAL_GROUP_JID): {
   fromBackend: string | null;
   toBackend: string | null;
   reason: string;
@@ -368,9 +364,7 @@ export function getTerminalFallbackSnapshot(
   };
 }
 
-export function getTerminalFocusMetadata(
-  chatJid = TERMINAL_GROUP_JID,
-): {
+export function getTerminalFocusMetadata(chatJid = TERMINAL_GROUP_JID): {
   key: string;
   label: string;
 } | null {

@@ -7,10 +7,12 @@ const { edgeBackendRun, containerBackendRun } = vi.hoisted(() => ({
   containerBackendRun: vi.fn(),
 }));
 
-const { syncObservabilitySnapshotToIpc, emitTerminalSystemEvent } = vi.hoisted(() => ({
-  syncObservabilitySnapshotToIpc: vi.fn(),
-  emitTerminalSystemEvent: vi.fn(),
-}));
+const { syncObservabilitySnapshotToIpc, emitTerminalSystemEvent } = vi.hoisted(
+  () => ({
+    syncObservabilitySnapshotToIpc: vi.fn(),
+    emitTerminalSystemEvent: vi.fn(),
+  }),
+);
 
 vi.mock('./backends/edge-backend.js', () => ({
   edgeBackend: {
@@ -133,7 +135,8 @@ describe('index group runtime fallback', () => {
       error: 'Edge execution exceeded deadline of 100ms.',
     });
 
-    const processed = await index._processGroupMessagesForTests('term:canary-group');
+    const processed =
+      await index._processGroupMessagesForTests('term:canary-group');
 
     expect(processed).toBe(false);
     expect(edgeBackendRun).toHaveBeenCalledTimes(1);
@@ -252,7 +255,8 @@ describe('index group runtime fallback', () => {
       new Error('Edge execution exceeded deadline of 100ms.'),
     );
 
-    const processed = await index._processGroupMessagesForTests('term:canary-group');
+    const processed =
+      await index._processGroupMessagesForTests('term:canary-group');
 
     expect(processed).toBe(false);
     expect(edgeBackendRun).toHaveBeenCalledTimes(1);
@@ -327,7 +331,8 @@ describe('index group runtime fallback', () => {
       error: 'Edge runner produced no progress within 30000ms.',
     });
 
-    const processed = await index._processGroupMessagesForTests('term:canary-group');
+    const processed =
+      await index._processGroupMessagesForTests('term:canary-group');
 
     expect(processed).toBe(false);
     expect(edgeBackendRun).toHaveBeenCalledTimes(1);
@@ -350,7 +355,9 @@ describe('index group runtime fallback', () => {
     });
     const retry = await import('./terminal-retry.js');
     expect(retry.getTerminalRetryState()).toBeNull();
-    expect(db.getAllSessions()).toEqual({ terminal_canary: 'session-heavy-edge' });
+    expect(db.getAllSessions()).toEqual({
+      terminal_canary: 'session-heavy-edge',
+    });
   });
 
   it('preserves retry state when explicit container retry returns error', async () => {
@@ -678,10 +685,14 @@ describe('index group runtime fallback', () => {
       newSessionId: 'session-edge-2',
     });
 
-    const processed = await index._processGroupMessagesForTests('term:canary-group');
+    const processed =
+      await index._processGroupMessagesForTests('term:canary-group');
 
     expect(processed).toBe(true);
-    expect(sendMessage).toHaveBeenCalledWith('term:canary-group', 'edge result');
+    expect(sendMessage).toHaveBeenCalledWith(
+      'term:canary-group',
+      'edge result',
+    );
     expect(retry.getTerminalRetryState()).toBeNull();
   });
 

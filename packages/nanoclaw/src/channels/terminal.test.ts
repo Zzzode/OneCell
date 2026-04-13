@@ -525,7 +525,6 @@ describe('terminal ui helpers', () => {
     expect(summary).toContain('framework.commitConflictRate: 0.25');
   });
 
-
   it('renders recent system events for `/logs`', () => {
     appendTerminalEventForTests('任务开始：task-active');
     appendTerminalEventForTests('执行失败，5 秒后重试（第 1 次）');
@@ -750,7 +749,9 @@ describe('terminal ui helpers', () => {
       expect(onRetryContainer).toHaveBeenCalledWith('terminal_canary');
       expect(
         writeSpy.mock.calls.some(([chunk]) =>
-          String(chunk).includes('执行 /retry-container 时出错：container unavailable'),
+          String(chunk).includes(
+            '执行 /retry-container 时出错：container unavailable',
+          ),
         ),
       ).toBe(true);
       await channel!.disconnect();
@@ -1110,7 +1111,9 @@ describe('terminal ui helpers', () => {
       expect(finalFrame).not.toContain('Inspector: help');
       expect(finalFrame).not.toContain('/clear  清空当前 inspector');
       expect(finalFrame).toContain('/quit   退出终端');
-      expect(finalFrame).toContain('ESC 优先关闭 overlay，否则打断当前正在执行的对话');
+      expect(finalFrame).toContain(
+        'ESC 优先关闭 overlay，否则打断当前正在执行的对话',
+      );
 
       await channel!.disconnect();
     } finally {

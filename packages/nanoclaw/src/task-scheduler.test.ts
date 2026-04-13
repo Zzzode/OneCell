@@ -657,13 +657,15 @@ describe('task scheduler', () => {
     expect(executions[0]).toMatchObject({
       backend: 'edge',
       status: 'failed',
-      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
+      error:
+        'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
 
     const graph = getTaskGraph(`graph:${executions[0].turnId}`);
     expect(graph).toMatchObject({
       status: 'failed',
-      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
+      error:
+        'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
     expect(getTaskNode(graph!.rootTaskId)).toMatchObject({
       status: 'failed',
@@ -671,11 +673,14 @@ describe('task scheduler', () => {
       backendId: 'edge',
       fallbackTarget: null,
       fallbackReason: null,
-      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
+      error:
+        'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
 
     const task = getTaskById('task-edge-failure');
-    expect(task?.last_result).toContain('Container retry available: edge_timeout.');
+    expect(task?.last_result).toContain(
+      'Container retry available: edge_timeout.',
+    );
   });
 
   it('records escalation hints when edge execution throws a retryable error', async () => {
@@ -731,13 +736,15 @@ describe('task scheduler', () => {
     expect(executions[0]).toMatchObject({
       backend: 'edge',
       status: 'failed',
-      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
+      error:
+        'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
 
     const graph = getTaskGraph(`graph:${executions[0].turnId}`);
     expect(graph).toMatchObject({
       status: 'failed',
-      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
+      error:
+        'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
     expect(getTaskById('task-edge-throw')?.last_result).toContain(
       'Container retry available: edge_timeout.',

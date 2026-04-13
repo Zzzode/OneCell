@@ -230,12 +230,7 @@ async function runTask(
       taskId: task.id,
     },
   });
-  const {
-    placement,
-    graph,
-    execution,
-    executionContext,
-  } = frameworkRun;
+  const { placement, graph, execution, executionContext } = frameworkRun;
   const usesHeavyWorker = placement.workerClass === 'heavy';
   const backend = deps.backends[placement.backendId];
 

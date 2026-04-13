@@ -74,18 +74,18 @@ export const logger = {
     log('fatal', dataOrMsg, msg),
 };
 
-const LOGGER_PROCESS_HOOKS_KEY = Symbol.for('onecell.nanoclaw.logger.processHooks');
+const LOGGER_PROCESS_HOOKS_KEY = Symbol.for(
+  'onecell.nanoclaw.logger.processHooks',
+);
 
 type LoggerProcessHooks = {
   uncaughtException?: (err: unknown) => void;
   unhandledRejection?: (reason: unknown) => void;
 };
 
-const loggerProcessHooks = (
-  globalThis as typeof globalThis & {
-    [LOGGER_PROCESS_HOOKS_KEY]?: LoggerProcessHooks;
-  }
-);
+const loggerProcessHooks = globalThis as typeof globalThis & {
+  [LOGGER_PROCESS_HOOKS_KEY]?: LoggerProcessHooks;
+};
 
 function ensureProcessHook(
   eventName: 'uncaughtException',
