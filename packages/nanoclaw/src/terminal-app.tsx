@@ -10,6 +10,40 @@ import type { TerminalPanelTranscriptEntry } from './terminal-panel.js'
 
 const theme = getTheme(resolveTheme())
 
+function sidePanelTitle(tab: string): string {
+  switch (tab) {
+    case 'turn':
+      return 'Details · Turn'
+    case 'agents':
+      return 'Details · Agents'
+    case 'graph':
+      return 'Details · Graph'
+    case 'tasks':
+      return 'Details · Tasks'
+    default:
+      return 'Details'
+  }
+}
+
+function overlayTitle(kind: string): string {
+  switch (kind) {
+    case 'help':
+      return 'Help'
+    case 'focus':
+      return 'Focus'
+    case 'system':
+      return 'System'
+    case 'session':
+      return 'Session'
+    case 'retry-container':
+      return 'Retry'
+    case 'interrupt':
+      return 'Interrupt'
+    default:
+      return 'Overlay'
+  }
+}
+
 interface TerminalAppProps {
   backend: string
   busy: boolean
@@ -52,6 +86,15 @@ export function TerminalApp({
         </Box>
       )}
 
+      {sidePanel?.isOpen && sidePanel.body && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color={theme.brand}>{sidePanelTitle(sidePanel.tab)}</Text>
+          {sidePanel.body.split('\n').map((line, i) => (
+            <Text key={i} color={theme.inactive}>{line}</Text>
+          ))}
+        </Box>
+      )}
+
       {drawer?.isOpen && drawer.body && (
         <Box flexDirection="column" marginTop={1}>
           <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
@@ -64,7 +107,7 @@ export function TerminalApp({
 
       {overlay?.kind && overlay.body && (
         <Box flexDirection="column" marginTop={1}>
-          <Text color={theme.brand}>{overlay.kind}</Text>
+          <Text color={theme.brand}>{overlayTitle(overlay.kind)}</Text>
           {overlay.body.split('\n').map((line, i) => (
             <Text key={i} color={theme.text}>{line}</Text>
           ))}

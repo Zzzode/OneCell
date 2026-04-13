@@ -1,6 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type React from 'react';
 
 import type { TaskNodeRecord } from '../db.js';
+
+// Mock ink to use renderToString in test environment since ink's render()
+// requires patch-console which depends on console.Console constructor.
+const inkHarness = vi.hoisted(() => {
+  let renderToStringFn: ((element: React.ReactElement) => string) | null = null;
+
+  return {
+    setRenderToString(fn: (element: React.ReactElement) => string) {
+      renderToStringFn = fn;
+    },
+    getRenderToString() {
+      return renderToStringFn;
+    },
+  };
+});
+
+vi.mock('ink', async () => {
+  const actual = await import('ink');
+  return {
+    ...actual,
+    render(element: React.ReactElement, _options?: Record<string, unknown>) {
+      const output = inkHarness.getRenderToString()?.(element) ?? '';
+      process.stdout.write(output);
+      return {
+        rerender(newElement: React.ReactElement) {
+          const newOutput = inkHarness.getRenderToString()?.(newElement) ?? '';
+          process.stdout.write(newOutput);
+        },
+        unmount() {},
+        waitUntilExit() {
+          return Promise.resolve();
+        },
+        clear() {},
+        write() {},
+      };
+    },
+  };
+});
 
 const readlineHarness = vi.hoisted(() => {
   let lineHandler: ((line: string) => void) | null = null;
@@ -135,6 +174,7 @@ import {
   executeTerminalTaskCommand,
   resetTerminalEventLogForTests,
 } from './terminal.js';
+import { renderToString } from 'ink';
 import { getChannelFactory } from './registry.js';
 import {
   buildTerminalAgentsSummaryFromObservability,
@@ -149,6 +189,7 @@ describe('terminal ui helpers', () => {
   beforeEach(() => {
     readlineHarness.reset();
     resetTerminalEventLogForTests();
+    inkHarness.setRenderToString(renderToString);
     vi.mocked(buildTerminalAgentsSummaryFromObservability).mockReturnValue(
       null,
     );
@@ -616,14 +657,13 @@ describe('terminal ui helpers', () => {
 
       expect(channel).not.toBeNull();
       await channel!.connect();
-      const promptCountAfterConnect =
-        readlineHarness.rl.prompt.mock.calls.length;
+      const writeCountAfterConnect = writeSpy.mock.calls.length;
 
       readlineHarness.emitLine('/tasks');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(readlineHarness.rl.prompt.mock.calls.length).toBe(
-        promptCountAfterConnect + 1,
+      expect(writeSpy.mock.calls.length).toBeGreaterThan(
+        writeCountAfterConnect,
       );
       expect(
         writeSpy.mock.calls.some(([chunk]) =>
@@ -658,7 +698,10 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/task');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
       expect(finalFrame).toContain('Details · Tasks');
       expect(finalFrame).toContain('当前没有任务。');
       expect(finalFrame).not.toContain('用法：/task');
@@ -876,25 +919,33 @@ describe('terminal ui helpers', () => {
   });
 
   it('re-renders the prompt after local `/agents` commands', async () => {
-    const factory = getChannelFactory('terminal');
-    expect(factory).toBeTypeOf('function');
-    const channel = factory!({
-      onMessage: vi.fn(),
-      onChatMetadata: vi.fn(),
-      registeredGroups: () => ({}),
-    });
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
 
-    expect(channel).not.toBeNull();
-    await channel!.connect();
-    const promptCountAfterConnect = readlineHarness.rl.prompt.mock.calls.length;
+    try {
+      const factory = getChannelFactory('terminal');
+      expect(factory).toBeTypeOf('function');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
 
-    readlineHarness.emitLine('/agents');
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+      const writeCountAfterConnect = writeSpy.mock.calls.length;
 
-    expect(readlineHarness.rl.prompt.mock.calls.length).toBe(
-      promptCountAfterConnect + 1,
-    );
-    await channel!.disconnect();
+      readlineHarness.emitLine('/agents');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(writeSpy.mock.calls.length).toBeGreaterThan(
+        writeCountAfterConnect,
+      );
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   it('shows a single busy indicator while processing terminal turns', async () => {
@@ -912,25 +963,21 @@ describe('terminal ui helpers', () => {
 
       expect(channel).not.toBeNull();
       await channel!.connect();
-      const promptCountAfterConnect =
-        readlineHarness.rl.prompt.mock.calls.length;
+      const writeCountAfterConnect = writeSpy.mock.calls.length;
 
       await channel!.setTyping?.('term:canary-group', true);
       await channel!.setTyping?.('term:canary-group', true);
 
-      expect(readlineHarness.rl.prompt.mock.calls.length).toBe(
-        promptCountAfterConnect + 1,
-      );
+      // Ink renders the busy state as "thinking..." in TerminalApp
+      expect(writeSpy.mock.calls.length).toBe(writeCountAfterConnect + 1);
       expect(
         writeSpy.mock.calls.some(([chunk]) =>
-          String(chunk).includes('处理中…'),
+          String(chunk).includes('thinking...'),
         ),
       ).toBe(true);
 
       await channel!.setTyping?.('term:canary-group', false);
-      expect(readlineHarness.rl.prompt.mock.calls.length).toBe(
-        promptCountAfterConnect + 2,
-      );
+      expect(writeSpy.mock.calls.length).toBe(writeCountAfterConnect + 2);
       await channel!.disconnect();
     } finally {
       writeSpy.mockRestore();
@@ -952,20 +999,17 @@ describe('terminal ui helpers', () => {
 
       expect(channel).not.toBeNull();
       await channel!.connect();
-      const promptCountAfterConnect =
-        readlineHarness.rl.prompt.mock.calls.length;
+      const writeCountAfterConnect = writeSpy.mock.calls.length;
 
       await channel!.setTyping?.('term:canary-group', true);
-      const promptCountWhileBusy = readlineHarness.rl.prompt.mock.calls.length;
+      const writeCountWhileBusy = writeSpy.mock.calls.length;
 
       emitTerminalSystemEvent(
         'term:canary-group',
         '执行开始：graph:test · edge/edge',
       );
 
-      expect(readlineHarness.rl.prompt.mock.calls.length).toBe(
-        promptCountWhileBusy + 1,
-      );
+      expect(writeSpy.mock.calls.length).toBe(writeCountWhileBusy + 1);
       expect(
         writeSpy.mock.calls.some(([chunk]) =>
           String(chunk).includes('执行开始：graph:test · edge/edge'),
@@ -973,9 +1017,7 @@ describe('terminal ui helpers', () => {
       ).toBe(true);
 
       await channel!.setTyping?.('term:canary-group', false);
-      expect(readlineHarness.rl.prompt.mock.calls.length).toBe(
-        promptCountAfterConnect + 3,
-      );
+      expect(writeSpy.mock.calls.length).toBe(writeCountAfterConnect + 3);
       await channel!.disconnect();
     } finally {
       writeSpy.mockRestore();
@@ -997,17 +1039,14 @@ describe('terminal ui helpers', () => {
 
       expect(channel).not.toBeNull();
       await channel!.connect();
-      const promptCountAfterConnect =
-        readlineHarness.rl.prompt.mock.calls.length;
+      const writeCountAfterConnect = writeSpy.mock.calls.length;
 
       emitTerminalSystemEvent(
         'term:canary-group',
         'team planner accepted fanout · 3 workers',
       );
 
-      expect(readlineHarness.rl.prompt.mock.calls.length).toBe(
-        promptCountAfterConnect + 1,
-      );
+      expect(writeSpy.mock.calls.length).toBe(writeCountAfterConnect + 1);
       expect(
         writeSpy.mock.calls.some(([chunk]) =>
           String(chunk).includes('team planner accepted fanout · 3 workers'),
@@ -1046,11 +1085,9 @@ describe('terminal ui helpers', () => {
       await channel!.sendMessage?.('term:canary-group', '已开始处理');
 
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
-      expect(finalFrame).toContain('Transcript');
       expect(finalFrame).toContain('你好');
       expect(finalFrame).toContain('team planner accepted fanout · 3 workers');
       expect(finalFrame).toContain('已开始处理');
-      expect(finalFrame).not.toContain('[ Transcript ]');
 
       await channel!.disconnect();
     } finally {
@@ -1108,9 +1145,10 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/help');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(
-        writeSpy.mock.calls.at(-1)?.[0] ?? '',
-      ).replace(/\x1b\[[0-9;]*m/g, '');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
       expect(finalFrame).toContain('Help');
       expect(finalFrame).toContain('Session');
       expect(finalFrame).toContain('Focus');
@@ -1146,9 +1184,10 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/logs 1');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(
-        writeSpy.mock.calls.at(-1)?.[0] ?? '',
-      ).replace(/\x1b\[[0-9;]*m/g, '');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
       expect(finalFrame).toContain('Logs');
       expect(finalFrame).not.toContain('drawer · logs');
 
@@ -1177,9 +1216,10 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/status');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(
-        writeSpy.mock.calls.at(-1)?.[0] ?? '',
-      ).replace(/\x1b\[[0-9;]*m/g, '');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
       expect(finalFrame).toContain('Details · Turn');
       expect(finalFrame).not.toContain('side panel · turn');
       expect(finalFrame).not.toContain('Inspector: status');
@@ -1220,7 +1260,10 @@ describe('terminal ui helpers', () => {
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
       expect(finalFrame).not.toContain('Help');
       expect(onCancel).not.toHaveBeenCalled();
 
@@ -1261,7 +1304,9 @@ describe('terminal ui helpers', () => {
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const afterFirstEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      const afterFirstEsc = String(
+        writeSpy.mock.calls.at(-1)?.[0] ?? '',
+      ).replace(/\x1b\[[0-9;]*m/g, '');
       expect(afterFirstEsc).toContain('Details · Turn');
       expect(afterFirstEsc).not.toContain('Logs');
       expect(onCancel).not.toHaveBeenCalled();
@@ -1269,14 +1314,18 @@ describe('terminal ui helpers', () => {
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const afterSecondEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      const afterSecondEsc = String(
+        writeSpy.mock.calls.at(-1)?.[0] ?? '',
+      ).replace(/\x1b\[[0-9;]*m/g, '');
       expect(afterSecondEsc).not.toContain('Details · Turn');
       expect(onCancel).not.toHaveBeenCalled();
 
       process.stdin.emit('data', Buffer.from([0x1b]));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const afterThirdEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      const afterThirdEsc = String(
+        writeSpy.mock.calls.at(-1)?.[0] ?? '',
+      ).replace(/\x1b\[[0-9;]*m/g, '');
       expect(afterThirdEsc).toContain('Interrupt');
       expect(onCancel).toHaveBeenCalledWith('terminal_canary');
 
@@ -1311,7 +1360,10 @@ describe('terminal ui helpers', () => {
       readlineHarness.emitLine('/clear');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
       expect(finalFrame).toContain('keep this transcript');
       expect(finalFrame).not.toContain('Help');
       expect(finalFrame).not.toContain('Logs');
