@@ -39,6 +39,44 @@ function sectionTitle(title: string): string {
   return tone(title, ANSI_ACCENT);
 }
 
+function sidePanelTitle(tab: string): string {
+  switch (tab) {
+    case 'turn':
+      return 'Details · Turn';
+    case 'agents':
+      return 'Details · Agents';
+    case 'graph':
+      return 'Details · Graph';
+    case 'tasks':
+      return 'Details · Tasks';
+    default:
+      return 'Details';
+  }
+}
+
+function drawerTitle(tab: string): string {
+  return tab === 'logs' ? 'Logs' : 'Drawer';
+}
+
+function overlayTitle(kind: string): string {
+  switch (kind) {
+    case 'help':
+      return 'Help';
+    case 'focus':
+      return 'Focus';
+    case 'system':
+      return 'System';
+    case 'session':
+      return 'Session';
+    case 'retry-container':
+      return 'Retry';
+    case 'interrupt':
+      return 'Interrupt';
+    default:
+      return 'Overlay';
+  }
+}
+
 const DEFAULT_WIDTH = 100;
 const DEFAULT_HEIGHT = 28;
 const MIN_WIDTH = 48;
@@ -303,7 +341,7 @@ function buildFailureLines(
   const lines: string[] = [];
   pushUnique(
     lines,
-    focus?.error ?? turn.error
+    (focus?.error ?? turn.error)
       ? tone(`Error: ${focus?.error ?? turn.error}`, ANSI_DANGER)
       : null,
   );
@@ -584,7 +622,7 @@ function buildIdlePanel(options: {
   const rightExtras = options.sidePanel?.isOpen
     ? [
         ...section(
-          `side panel · ${options.sidePanel.tab}`,
+          sidePanelTitle(options.sidePanel.tab),
           buildSurfaceLines(options.sidePanel.body),
           Math.max(20, options.width),
           1,
@@ -595,7 +633,7 @@ function buildIdlePanel(options: {
   const bottom = options.drawer?.isOpen
     ? [
         ...section(
-          `drawer · ${options.drawer.tab}`,
+          drawerTitle(options.drawer.tab),
           buildSurfaceLines(options.drawer.body),
           Math.max(20, options.width),
           1,
@@ -606,7 +644,7 @@ function buildIdlePanel(options: {
   const overlay = options.overlay?.kind
     ? [
         ...section(
-          `overlay · ${options.overlay.kind}`,
+          overlayTitle(options.overlay.kind ?? ''),
           buildSurfaceLines(options.overlay.body),
           Math.max(20, options.width),
           1,
@@ -711,7 +749,7 @@ export function buildTerminalPanel(options: {
   if (options.sidePanel?.isOpen) {
     right.push(
       ...section(
-        `side panel · ${options.sidePanel.tab}`,
+        sidePanelTitle(options.sidePanel.tab),
         buildSurfaceLines(options.sidePanel.body),
         Math.max(24, width),
         1,
@@ -722,7 +760,7 @@ export function buildTerminalPanel(options: {
   const bottom = options.drawer?.isOpen
     ? [
         ...section(
-          `drawer · ${options.drawer.tab}`,
+          drawerTitle(options.drawer.tab),
           buildSurfaceLines(options.drawer.body),
           width,
           1,
@@ -733,7 +771,7 @@ export function buildTerminalPanel(options: {
   const overlay = options.overlay?.kind
     ? [
         ...section(
-          `overlay · ${options.overlay.kind}`,
+          overlayTitle(options.overlay.kind ?? ''),
           buildSurfaceLines(options.overlay.body),
           width,
           1,
