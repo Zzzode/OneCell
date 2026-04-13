@@ -53,7 +53,13 @@ type TerminalExecutionHealth = 'healthy' | 'missing' | 'stale' | 'terminal';
 type TerminalGraphHealth = 'healthy' | 'stale' | 'terminal' | 'idle';
 type TerminalSidePanelTab = 'turn' | 'agents' | 'graph' | 'tasks';
 type TerminalDrawerTab = 'logs';
-type TerminalOverlayKind = 'help' | 'focus' | 'system' | 'session' | 'retry-container' | 'interrupt';
+type TerminalOverlayKind =
+  | 'help'
+  | 'focus'
+  | 'system'
+  | 'session'
+  | 'retry-container'
+  | 'interrupt';
 
 type LocalCommand =
   | '/help'
@@ -800,7 +806,9 @@ class TerminalChannel implements Channel {
 
   private async handleTaskCommand(args: string[]): Promise<void> {
     const summary =
-      args.length === 0 ? buildTerminalTasksSummary() : executeTerminalTaskCommand(args);
+      args.length === 0
+        ? buildTerminalTasksSummary()
+        : executeTerminalTaskCommand(args);
     this.openSidePanel('tasks', summary);
   }
 
@@ -933,7 +941,10 @@ class TerminalChannel implements Channel {
     this.latestSystemEvent = normalized;
     if (shouldPromoteSystemEvent(normalized)) {
       const focus = buildTerminalFocusSummary();
-      this.openOverlay('system', focus ? `${normalized}\n\n${focus}` : normalized);
+      this.openOverlay(
+        'system',
+        focus ? `${normalized}\n\n${focus}` : normalized,
+      );
       return;
     }
     this.renderScreen(true);

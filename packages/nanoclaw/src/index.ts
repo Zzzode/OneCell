@@ -577,7 +577,9 @@ export async function _retryTerminalOnContainerForTests(): Promise<
   return result;
 }
 
-async function retryTerminalOnContainerForTests(): Promise<'success' | 'error'> {
+async function retryTerminalOnContainerForTests(): Promise<
+  'success' | 'error'
+> {
   const retry = getTerminalRetryState();
   if (!retry) {
     return 'error';
@@ -1016,7 +1018,8 @@ async function runAgent(
         error: error || 'Unknown error',
         workerClass: effectiveBackendId === 'container' ? 'heavy' : 'edge',
         fallbackEligible:
-          effectiveBackendId === 'edge' && override?.retryOrigin !== 'explicit_container_retry',
+          effectiveBackendId === 'edge' &&
+          override?.retryOrigin !== 'explicit_container_retry',
         visibleOutputEmitted: streamedVisibleResult,
       });
 
@@ -1026,7 +1029,10 @@ async function runAgent(
       if (finalRecovery.kind === 'replan') {
         markTaskNodeForReplan(graph.rootTaskId, finalRecovery.reason);
       }
-      if (finalRecovery.kind === 'explicit_container_retry' && isTerminalGroup) {
+      if (
+        finalRecovery.kind === 'explicit_container_retry' &&
+        isTerminalGroup
+      ) {
         setTerminalRetryState({
           prompt,
           groupFolder: group.folder,

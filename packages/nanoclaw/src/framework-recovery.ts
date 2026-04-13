@@ -1,4 +1,7 @@
-import { requireReplanForTaskNode, type TaskFallbackReason } from './task-graph-state.js';
+import {
+  requireReplanForTaskNode,
+  type TaskFallbackReason,
+} from './task-graph-state.js';
 
 export type RuntimeRecoveryDecision =
   | { kind: 'none' }
