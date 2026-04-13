@@ -23,6 +23,9 @@ const ANSI_DIM = '\x1b[90m';
 const ANSI_TEXT = '\x1b[37m';
 const ANSI_ACCENT = '\x1b[38;5;111m';
 const ANSI_BORDER = '\x1b[38;5;240m';
+const ANSI_SUCCESS = '\x1b[38;5;114m';
+const ANSI_WARNING = '\x1b[38;5;179m';
+const ANSI_DANGER = '\x1b[38;5;174m';
 
 function tone(text: string, color: string): string {
   return `${color}${text}${ANSI_RESET}`;
@@ -287,7 +290,7 @@ function isNoisyStep(text: string): boolean {
 }
 
 function isFailureLike(value: string | null | undefined): boolean {
-  return /失败|错误|异常|降级|fallback|failed|error|timeout|stale|warning|unhealthy/i.test(
+  return /失败|错误|异常|降级|fallback|failed|error|timeout|stale|warning|unhealthy|retry/i.test(
     value ?? '',
   );
 }
@@ -298,28 +301,30 @@ function buildFailureLines(
   latestSystemEvent: string | null | undefined,
 ): string[] {
   const lines: string[] = [];
+  pushUnique(
+    lines,
+    focus?.error ?? turn.error
+      ? tone(`Error: ${focus?.error ?? turn.error}`, ANSI_DANGER)
+      : null,
+  );
   if (turn.fallback) {
     pushUnique(
       lines,
-      `Route switched: ${turn.fallback.fromBackend ?? 'unknown'} -> ${turn.fallback.toBackend ?? 'unknown'}`,
+      tone(
+        `Retry available: ${turn.fallback.fromBackend ?? 'edge'} → ${turn.fallback.toBackend ?? 'container'} · ${turn.fallback.reason}`,
+        ANSI_WARNING,
+      ),
     );
-    pushUnique(lines, `Reason: ${turn.fallback.reason}`);
     pushUnique(
       lines,
       turn.fallback.detail ? `Detail: ${turn.fallback.detail}` : null,
     );
   }
-  pushUnique(
-    lines,
-    (focus?.error ?? turn.error)
-      ? `Error: ${focus?.error ?? turn.error}`
-      : null,
-  );
   if (turn.status === 'failed' && !turn.error && !turn.fallback) {
     pushUnique(lines, `Turn failed during stage: ${turn.stage}`);
   }
   if (isFailureLike(latestSystemEvent)) {
-    pushUnique(lines, `Latest: ${latestSystemEvent}`);
+    pushUnique(lines, latestSystemEvent);
   }
   return lines;
 }
@@ -336,10 +341,15 @@ function buildAgentLines(
     const focused = worker.key === turn.focusKey;
     const marker = focused ? tone('›', ANSI_ACCENT) : tone('·', ANSI_DIM);
     const status = readableStatus(worker.status).padEnd(7);
-    const elapsed = elapsedSince(worker.startedAt ?? worker.updatedAt, now).padStart(4);
+    const elapsed = elapsedSince(
+      worker.startedAt ?? worker.updatedAt,
+      now,
+    ).padStart(4);
     const summary = worker.lastActivity ?? worker.summary ?? 'waiting';
     const line = `${marker} ${worker.label.padEnd(10)} ${status} ${elapsed} ${summary}`;
-    return focused ? tone(clampText(line, width), ANSI_TEXT) : clampText(line, width);
+    return focused
+      ? tone(clampText(line, width), ANSI_TEXT)
+      : clampText(line, width);
   });
 
   if (workers.length > maxAgents) {
@@ -671,14 +681,7 @@ export function buildTerminalPanel(options: {
       1,
     ),
     ...(failureLines.length > 0
-      ? [
-          ...section(
-            'Attention',
-            failureLines,
-            Math.max(24, width),
-            1,
-          ),
-        ]
+      ? [...section('Attention', failureLines, Math.max(24, width), 1)]
       : []),
   ];
   const right = [
