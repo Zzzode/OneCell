@@ -1,6 +1,5 @@
 import React from 'react'
 import { render } from 'ink'
-import readline from 'readline';
 
 import {
   EDGE_ANTHROPIC_MODEL,
@@ -554,7 +553,6 @@ export function buildTerminalObservabilitySummary(): string {
 class TerminalChannel implements Channel {
   name = 'terminal';
   private connected = false;
-  private rl: readline.Interface | null = null;
   private lastAssistantMessageByJid = new Map<string, string>();
   private typingByJid = new Set<string>();
   private inkInstance: ReturnType<typeof render> | null = null;
@@ -574,7 +572,6 @@ class TerminalChannel implements Channel {
     kind: TerminalOverlayKind | null;
     body: string | null;
   } = { kind: null, body: null };
-  private stdinDataHandler: ((chunk: Buffer) => void) | null = null;
 
   constructor(private readonly opts: ChannelOpts) {}
 
@@ -589,42 +586,7 @@ class TerminalChannel implements Channel {
       true,
     );
 
-    this.rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true,
-      prompt: '  › ',
-    });
-
-    this.setupEscListener();
     this.renderScreen(true);
-
-    this.rl.on('line', (line) => {
-      void this.handleLine(line);
-    });
-  }
-
-  private setupEscListener(): void {
-    if (!process.stdin.isTTY) return;
-
-    this.stdinDataHandler = (chunk: Buffer): void => {
-      const sequence = chunk.toString('utf8');
-      if (sequence === '\u001b[1;2A') {
-        this.handleFocusCycle(-1);
-        return;
-      }
-      if (sequence === '\u001b[1;2B') {
-        this.handleFocusCycle(1);
-        return;
-      }
-      if (chunk[0] !== 0x1b) return;
-      const isLoneEscape =
-        chunk.length === 1 || (chunk.length === 2 && chunk[1] === 0x1b);
-      if (!isLoneEscape) return;
-      void this.handleInterrupt();
-    };
-
-    process.stdin.on('data', this.stdinDataHandler);
   }
 
   private handleFocusCycle(direction: 1 | -1): void {
@@ -847,8 +809,6 @@ class TerminalChannel implements Channel {
 
   private renderScreen(_force = false): void {
     const busy = this.typingByJid.has(TERMINAL_GROUP_JID);
-    const prompt = busy ? '  … ' : '  › ';
-    this.rl?.setPrompt(prompt);
     const props = {
       backend: TERMINAL_GROUP_EXECUTION_MODE,
       busy,
@@ -859,6 +819,10 @@ class TerminalChannel implements Channel {
       sidePanel: this.sidePanel,
       drawer: this.drawer,
       overlay: this.overlay,
+      onSubmit: (text: string) => { void this.handleLine(text) },
+      onEscape: () => { void this.handleInterrupt() },
+      onShiftUp: () => { this.handleFocusCycle(-1) },
+      onShiftDown: () => { this.handleFocusCycle(1) },
     };
 
     if (this.inkInstance) {
@@ -868,7 +832,6 @@ class TerminalChannel implements Channel {
         exitOnCtrlC: false,
       });
     }
-    this.rl?.prompt(true);
   }
 
   private openSidePanel(tab: TerminalSidePanelTab, body: string): void {
@@ -997,12 +960,6 @@ class TerminalChannel implements Channel {
     if (activeTerminalChannel === this) {
       activeTerminalChannel = null;
     }
-    if (this.stdinDataHandler) {
-      process.stdin.removeListener('data', this.stdinDataHandler);
-      this.stdinDataHandler = null;
-    }
-    this.rl?.close();
-    this.rl = null;
   }
 }
 
