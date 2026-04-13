@@ -12,6 +12,7 @@ export interface ChannelOpts {
   onResetSession?: (groupFolder: string) => void | Promise<void>;
   onQuit?: (groupFolder: string) => void | Promise<void>;
   onCancel?: (groupFolder: string) => void | Promise<void>;
+  onRetryContainer?: (groupFolder: string) => Promise<string>;
 }
 
 export type ChannelFactory = (opts: ChannelOpts) => Channel | null;

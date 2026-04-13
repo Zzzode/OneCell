@@ -597,9 +597,9 @@ describe('task scheduler', () => {
     expect(executions[0]?.backend).toBe('edge');
   });
 
-  it('falls back edge task failures to container for fallback-eligible auto groups', async () => {
+  it('fails edge task executions explicitly and records container escalation availability', async () => {
     createTask({
-      id: 'task-edge-fallback',
+      id: 'task-edge-failure',
       group_folder: 'team_alpha',
       chat_jid: 'room@g.us',
       prompt: 'edge first task',
@@ -616,21 +616,6 @@ describe('task scheduler', () => {
       result: null,
       error: 'Edge execution exceeded deadline of 100ms.',
     });
-    backendRun.mockImplementationOnce(
-      async (_group, _input, started, onOutput) => {
-        await started?.({
-          chatJid: 'room@g.us',
-          process: {} as any,
-          executionName: 'nanoclaw-fallback-task',
-          groupFolder: 'team_alpha',
-        });
-        await onOutput?.({
-          status: 'success',
-          result: 'heavy fallback result',
-        });
-        return { status: 'success', result: 'heavy fallback result' };
-      },
-    );
 
     const queue = {
       closeStdin: vi.fn(),
@@ -664,36 +649,234 @@ describe('task scheduler', () => {
     await vi.advanceTimersByTimeAsync(10);
 
     expect(edgeBackendRun).toHaveBeenCalledTimes(1);
-    expect(backendRun).toHaveBeenCalledTimes(1);
-    expect(sendMessage).toHaveBeenCalledWith(
-      'room@g.us',
-      'heavy fallback result',
-    );
+    expect(backendRun).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
 
     const executions = listExecutionStates();
-    expect(executions).toHaveLength(2);
+    expect(executions).toHaveLength(1);
     expect(executions[0]).toMatchObject({
       backend: 'edge',
       status: 'failed',
-      error: 'Edge execution exceeded deadline of 100ms.',
-    });
-    expect(executions[1]).toMatchObject({
-      backend: 'container',
-      status: 'completed',
-      error: null,
+      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
 
     const graph = getTaskGraph(`graph:${executions[0].turnId}`);
     expect(graph).toMatchObject({
-      status: 'completed',
+      status: 'failed',
+      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
     expect(getTaskNode(graph!.rootTaskId)).toMatchObject({
-      status: 'completed',
-      workerClass: 'heavy',
-      backendId: 'container',
-      fallbackTarget: 'heavy',
-      fallbackReason: 'edge_timeout',
+      status: 'failed',
+      workerClass: 'edge',
+      backendId: 'edge',
+      fallbackTarget: null,
+      fallbackReason: null,
+      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
     });
+
+    const task = getTaskById('task-edge-failure');
+    expect(task?.last_result).toContain('Container retry available: edge_timeout.');
+  });
+
+  it('records escalation hints when edge execution throws a retryable error', async () => {
+    createTask({
+      id: 'task-edge-throw',
+      group_folder: 'team_alpha',
+      chat_jid: 'room@g.us',
+      prompt: 'edge throw task',
+      schedule_type: 'once',
+      schedule_value: '2026-04-03T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: new Date(Date.now() - 60_000).toISOString(),
+      status: 'active',
+      created_at: '2026-04-03T00:00:00.000Z',
+    });
+
+    edgeBackendRun.mockRejectedValueOnce(
+      new Error('Edge execution exceeded deadline of 100ms.'),
+    );
+
+    const queue = {
+      closeStdin: vi.fn(),
+      enqueueTask: vi.fn(
+        async (_groupJid: string, _taskId: string, fn: () => Promise<void>) => {
+          await fn();
+        },
+      ),
+      registerProcess: vi.fn(),
+      notifyIdle: vi.fn(),
+    } as any;
+
+    startSchedulerLoop({
+      backends: { container: backendStub, edge: edgeBackendStub },
+      defaultExecutionMode: 'auto',
+      registeredGroups: () => ({
+        'room@g.us': {
+          name: 'Team Alpha',
+          folder: 'team_alpha',
+          trigger: '@Andy',
+          added_at: '2026-04-03T00:00:00.000Z',
+          executionMode: 'auto',
+        },
+      }),
+      getSessions: () => ({}),
+      queue,
+      sendMessage: async () => {},
+    });
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    const executions = listExecutionStates();
+    expect(executions).toHaveLength(1);
+    expect(executions[0]).toMatchObject({
+      backend: 'edge',
+      status: 'failed',
+      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
+    });
+
+    const graph = getTaskGraph(`graph:${executions[0].turnId}`);
+    expect(graph).toMatchObject({
+      status: 'failed',
+      error: 'Edge execution exceeded deadline of 100ms. Container retry available: edge_timeout.',
+    });
+    expect(getTaskById('task-edge-throw')?.last_result).toContain(
+      'Container retry available: edge_timeout.',
+    );
+  });
+
+  it('records runtime-unhealthy escalation hints without starting container fallback', async () => {
+    createTask({
+      id: 'task-edge-unhealthy',
+      group_folder: 'team_alpha',
+      chat_jid: 'room@g.us',
+      prompt: 'edge unhealthy task',
+      schedule_type: 'once',
+      schedule_value: '2026-04-03T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: new Date(Date.now() - 60_000).toISOString(),
+      status: 'active',
+      created_at: '2026-04-03T00:00:00.000Z',
+    });
+
+    edgeBackendRun.mockResolvedValueOnce({
+      status: 'error',
+      result: null,
+      error: 'Edge runner finished without a final event.',
+    });
+
+    const queue = {
+      closeStdin: vi.fn(),
+      enqueueTask: vi.fn(
+        async (_groupJid: string, _taskId: string, fn: () => Promise<void>) => {
+          await fn();
+        },
+      ),
+      registerProcess: vi.fn(),
+      notifyIdle: vi.fn(),
+    } as any;
+
+    startSchedulerLoop({
+      backends: { container: backendStub, edge: edgeBackendStub },
+      defaultExecutionMode: 'auto',
+      registeredGroups: () => ({
+        'room@g.us': {
+          name: 'Team Alpha',
+          folder: 'team_alpha',
+          trigger: '@Andy',
+          added_at: '2026-04-03T00:00:00.000Z',
+          executionMode: 'auto',
+        },
+      }),
+      getSessions: () => ({}),
+      queue,
+      sendMessage: async () => {},
+    });
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(edgeBackendRun).toHaveBeenCalledTimes(1);
+    expect(backendRun).not.toHaveBeenCalled();
+    expect(getTaskById('task-edge-unhealthy')?.last_result).toContain(
+      'Container retry available: edge_runtime_unhealthy.',
+    );
+  });
+
+  it('keeps workspace conflicts on the replan path instead of adding escalation hints', async () => {
+    createTask({
+      id: 'task-edge-conflict',
+      group_folder: 'team_alpha',
+      chat_jid: 'room@g.us',
+      prompt: 'conflicting task',
+      schedule_type: 'once',
+      schedule_value: '2026-04-03T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: new Date(Date.now() - 60_000).toISOString(),
+      status: 'active',
+      created_at: '2026-04-03T00:00:00.000Z',
+    });
+
+    edgeBackendRun.mockResolvedValueOnce({
+      status: 'error',
+      result: null,
+      error: 'Workspace version conflict after timeout: expected a, received b',
+    });
+
+    const queue = {
+      closeStdin: vi.fn(),
+      enqueueTask: vi.fn(
+        async (_groupJid: string, _taskId: string, fn: () => Promise<void>) => {
+          await fn();
+        },
+      ),
+      registerProcess: vi.fn(),
+      notifyIdle: vi.fn(),
+    } as any;
+
+    startSchedulerLoop({
+      backends: { container: backendStub, edge: edgeBackendStub },
+      defaultExecutionMode: 'auto',
+      registeredGroups: () => ({
+        'room@g.us': {
+          name: 'Team Alpha',
+          folder: 'team_alpha',
+          trigger: '@Andy',
+          added_at: '2026-04-03T00:00:00.000Z',
+          executionMode: 'auto',
+        },
+      }),
+      getSessions: () => ({}),
+      queue,
+      sendMessage: async () => {},
+    });
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(edgeBackendRun).toHaveBeenCalledTimes(1);
+    expect(backendRun).not.toHaveBeenCalled();
+
+    const executions = listExecutionStates();
+    expect(executions).toHaveLength(1);
+    expect(executions[0]).toMatchObject({
+      backend: 'edge',
+      status: 'failed',
+      error: 'Workspace version conflict after timeout: expected a, received b',
+    });
+
+    const graph = getTaskGraph(`graph:${executions[0].turnId}`);
+    expect(graph).toMatchObject({
+      status: 'failed',
+      error: 'Workspace version conflict after timeout: expected a, received b',
+    });
+    expect(getTaskNode(graph!.rootTaskId)).toMatchObject({
+      status: 'failed',
+      failureClass: 'commit_failure',
+      fallbackTarget: 'replan',
+      fallbackReason: 'state_conflict_requires_heavy',
+      error: 'Workspace version conflict after timeout: expected a, received b',
+    });
+    expect(getTaskById('task-edge-conflict')?.last_result).not.toContain(
+      'Container retry available:',
+    );
   });
 
   it('routes auto groups with scripts to container backend', async () => {

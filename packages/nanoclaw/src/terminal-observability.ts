@@ -247,6 +247,143 @@ function buildFocusState(turn: TerminalTurnState): TerminalWorkerState | null {
   return turn.workers.get(turn.focusKey) ?? turn.workers.get('root') ?? null;
 }
 
+export function getTerminalActiveTurnSnapshot(
+  chatJid = TERMINAL_GROUP_JID,
+): {
+  graphId: string;
+  status: TerminalTurnStatus;
+  stage: string;
+  backend: { backendId: string | null; workerClass: string | null };
+  focus: { key: string; label: string; status: TerminalWorkerStatus } | null;
+  fallback: {
+    fromBackend: string | null;
+    toBackend: string | null;
+    reason: string;
+    detail: string | null;
+  } | null;
+  error: string | null;
+  activity: {
+    current: string | null;
+    focus: string | null;
+  };
+} | null {
+  const turn = terminalTurns.get(chatJid);
+  if (!turn) return null;
+  const focus = buildFocusState(turn);
+  return {
+    graphId: turn.graphId,
+    status: turn.status,
+    stage: turn.stage,
+    backend: {
+      backendId: turn.backendId,
+      workerClass: turn.workerClass,
+    },
+    focus: focus
+      ? {
+          key: focus.key,
+          label: focus.label,
+          status: focus.status,
+        }
+      : null,
+    fallback: turn.fallback
+      ? {
+          fromBackend: turn.fallback.fromBackend,
+          toBackend: turn.fallback.toBackend,
+          reason: turn.fallback.reason,
+          detail: turn.fallback.detail,
+        }
+      : null,
+    error: turn.error,
+    activity: {
+      current:
+        focus && focus.key !== 'root'
+          ? `${focus.label}: ${focus.lastActivity ?? 'none'}`
+          : turn.lastActivity,
+      focus: focus?.lastActivity ?? null,
+    },
+  };
+}
+
+export function getTerminalWorkerListSnapshot(
+  chatJid = TERMINAL_GROUP_JID,
+): Array<{
+  key: string;
+  label: string;
+  status: TerminalWorkerStatus;
+  focused: boolean;
+}> | null {
+  const turn = terminalTurns.get(chatJid);
+  if (!turn) return null;
+  return sortedWorkers(turn).map((worker) => ({
+    key: worker.key,
+    label: worker.label,
+    status: worker.status,
+    focused: worker.key === turn.focusKey,
+  }));
+}
+
+export function getTerminalFocusedTimelineSnapshot(
+  chatJid = TERMINAL_GROUP_JID,
+): {
+  focusKey: string;
+  entries: Array<{ targetKey: string | null; text: string }>;
+} | null {
+  const turn = terminalTurns.get(chatJid);
+  if (!turn) return null;
+  const focus = buildFocusState(turn);
+  if (!focus) return null;
+  const entries =
+    focus.key === 'root'
+      ? turn.timeline.slice(-TERMINAL_PANEL_TIMELINE_LIMIT)
+      : turn.timeline
+          .filter(
+            (entry) =>
+              entry.targetKey === focus.key || entry.targetKey === 'root',
+          )
+          .slice(-TERMINAL_FOCUS_TIMELINE_LIMIT);
+  return {
+    focusKey: focus.key,
+    entries: entries.map((entry) => ({
+      targetKey: entry.targetKey,
+      text: entry.text,
+    })),
+  };
+}
+
+export function getTerminalFallbackSnapshot(
+  chatJid = TERMINAL_GROUP_JID,
+): {
+  fromBackend: string | null;
+  toBackend: string | null;
+  reason: string;
+  detail: string | null;
+} | null {
+  const turn = terminalTurns.get(chatJid);
+  if (!turn?.fallback) return null;
+  return {
+    fromBackend: turn.fallback.fromBackend,
+    toBackend: turn.fallback.toBackend,
+    reason: turn.fallback.reason,
+    detail: turn.fallback.detail,
+  };
+}
+
+export function getTerminalFocusMetadata(
+  chatJid = TERMINAL_GROUP_JID,
+): {
+  key: string;
+  label: string;
+} | null {
+  const turn = terminalTurns.get(chatJid);
+  if (!turn) return null;
+  const focus = buildFocusState(turn);
+  if (!focus) return null;
+  return {
+    key: focus.key,
+    label: focus.label,
+  };
+}
+
 function workerLines(worker: TerminalWorkerState, isFocused: boolean): string {
   return [
     `agent: ${worker.label}${isFocused ? ' [focus]' : ''}`,

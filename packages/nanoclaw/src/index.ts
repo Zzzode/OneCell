@@ -78,7 +78,6 @@ import {
 import {
   classifyRuntimeRecovery,
   markTaskNodeForReplan,
-  prepareHeavyFallbackExecution,
 } from './framework-recovery.js';
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
@@ -106,7 +105,6 @@ import {
   completeTerminalTurn,
   failTerminalTurn,
   getTerminalWorkerLabel,
-  recordTerminalFallback,
   recordTerminalTimeline,
   resetTerminalObservability,
   ensureTerminalWorker,
@@ -121,6 +119,11 @@ import {
   completeRootTaskGraph,
   failRootTaskGraph,
 } from './task-graph-state.js';
+import {
+  clearTerminalRetryState,
+  getTerminalRetryState,
+  setTerminalRetryState,
+} from './terminal-retry.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -376,6 +379,7 @@ function ensureTerminalCanaryGroup(): void {
 function resetTerminalSession(reason: 'startup' | 'command'): void {
   delete sessions[TERMINAL_GROUP_FOLDER];
   deleteSession(TERMINAL_GROUP_FOLDER);
+  clearTerminalRetryState();
   resetTerminalObservability();
   logger.info(
     { group: TERMINAL_GROUP_FOLDER, reason },
@@ -463,6 +467,7 @@ function cleanupTerminalRuntime(options: {
 }
 
 function gracefulTerminalQuit(): void {
+  clearTerminalRetryState();
   cleanupTerminalRuntime({
     reason: 'quit',
     error: 'Terminal session quit',
@@ -565,6 +570,66 @@ export function _setLastAgentTimestampForTests(
 }
 
 /** @internal - exported for testing */
+export async function _retryTerminalOnContainerForTests(): Promise<
+  'success' | 'error'
+> {
+  const result = await retryTerminalOnContainerForTests();
+  return result;
+}
+
+async function retryTerminalOnContainerForTests(): Promise<'success' | 'error'> {
+  const retry = getTerminalRetryState();
+  if (!retry) {
+    return 'error';
+  }
+
+  const group = registeredGroups[retry.chatJid];
+  if (!group) {
+    return 'error';
+  }
+
+  const previousSession = sessions[group.folder];
+  if (retry.sessionId) {
+    sessions[group.folder] = retry.sessionId;
+    setSession(group.folder, retry.sessionId);
+  } else {
+    delete sessions[group.folder];
+    deleteSession(group.folder);
+  }
+
+  try {
+    const result = await runAgent(
+      group,
+      retry.prompt,
+      retry.chatJid,
+      undefined,
+      {
+        executionMode: 'container',
+        retryOrigin: 'explicit_container_retry',
+      },
+    );
+    if (result === 'success') {
+      clearTerminalRetryState();
+      return 'success';
+    }
+    setTerminalRetryState(retry);
+    return 'error';
+  } catch (error) {
+    setTerminalRetryState(retry);
+    throw error;
+  } finally {
+    if (getTerminalRetryState() !== null) {
+      if (previousSession) {
+        sessions[group.folder] = previousSession;
+        setSession(group.folder, previousSession);
+      } else if (!retry.sessionId) {
+        delete sessions[group.folder];
+        deleteSession(group.folder);
+      }
+    }
+  }
+}
+
 export function _cleanupTerminalRuntimeForTests(
   reason: 'startup' | 'command' | 'quit' = 'startup',
 ): void {
@@ -727,12 +792,20 @@ async function runAgent(
   prompt: string,
   chatJid: string,
   onOutput?: (output: AgentRunOutput) => Promise<void>,
+  override?: {
+    executionMode?: 'edge' | 'container' | 'auto';
+    retryOrigin?: 'explicit_container_retry';
+  },
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
+  const effectiveGroup =
+    override?.executionMode && override.executionMode !== group.executionMode
+      ? { ...group, executionMode: override.executionMode }
+      : group;
   const frameworkRun = createFrameworkRunContext({
     requestKind: 'group_turn',
-    group,
+    group: effectiveGroup,
     input: {
       prompt,
       script: undefined,
@@ -754,6 +827,7 @@ async function runAgent(
   } = frameworkRun;
   const usesHeavyWorker = placement.workerClass === 'heavy';
   const backend = frameworkWorkers[placement.backendId];
+  const isTerminalGroup = chatJid === TERMINAL_GROUP_JID;
 
   if (usesHeavyWorker) {
     const taskSnapshots = buildTaskSnapshots(
@@ -781,6 +855,7 @@ async function runAgent(
       graphId: graph.graphId,
       rootTaskId: graph.rootTaskId,
       executionMode: placement.executionMode,
+      retryOrigin: override?.retryOrigin ?? null,
       backendId: placement.backendId,
       workerClass: placement.workerClass,
       routeReason: placement.routeReason,
@@ -903,78 +978,6 @@ async function runAgent(
       visibleOutputEmitted: streamedVisibleResult,
     });
 
-    if (recovery.kind === 'fallback' && executionId) {
-      const rawError = streamedError || output.error || 'Unknown error';
-      failExecution(executionId, rawError);
-      emitTerminalSystemEvent(
-        chatJid,
-        `执行降级：${graph.graphId} · edge → heavy · ${recovery.reason} · ${summarizeRuntimeError(rawError)}`,
-      );
-      recordTerminalFallback({
-        chatJid,
-        fromBackend: 'edge',
-        toBackend: 'container',
-        reason: recovery.reason,
-        detail: rawError,
-      });
-
-      if (sessionId) {
-        sessions[group.folder] = sessionId;
-        setSession(group.folder, sessionId);
-      } else {
-        delete sessions[group.folder];
-        deleteSession(group.folder);
-      }
-
-      const fallback = prepareHeavyFallbackExecution({
-        scope: {
-          scopeType: 'group',
-          scopeId: group.folder,
-          groupJid: chatJid,
-        },
-        taskNodeId: graph.rootTaskId,
-        baseWorkspaceVersion,
-        previousContext: executionContext,
-        reason: recovery.reason,
-      });
-
-      executionId = fallback.execution.executionId;
-      effectiveExecutionId = fallback.execution.executionId;
-      effectiveBackendId = 'container';
-      streamedError = null;
-      streamedVisibleResult = false;
-      updateTerminalTurnStage({
-        chatJid,
-        graphId: graph.graphId,
-        executionId: effectiveExecutionId,
-        stage: 'fallback_running',
-        backendId: 'container',
-        workerClass: 'heavy',
-        activity: `heavy fallback started · ${recovery.reason}`,
-      });
-
-      output = await frameworkWorkers.container.run(
-        group,
-        {
-          prompt,
-          sessionId,
-          groupFolder: group.folder,
-          chatJid,
-          isMain,
-          assistantName: ASSISTANT_NAME,
-          executionContext: fallback.executionContext,
-        },
-        (execution) =>
-          queue.registerProcess(
-            execution.chatJid,
-            execution.process,
-            execution.executionName,
-            execution.groupFolder,
-          ),
-        wrappedOnOutput,
-      );
-    }
-
     if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
       setSession(group.folder, output.newSessionId);
@@ -1012,7 +1015,8 @@ async function runAgent(
       const finalRecovery = classifyRuntimeRecovery({
         error: error || 'Unknown error',
         workerClass: effectiveBackendId === 'container' ? 'heavy' : 'edge',
-        fallbackEligible: false,
+        fallbackEligible:
+          effectiveBackendId === 'edge' && override?.retryOrigin !== 'explicit_container_retry',
         visibleOutputEmitted: streamedVisibleResult,
       });
 
@@ -1021,6 +1025,20 @@ async function runAgent(
       }
       if (finalRecovery.kind === 'replan') {
         markTaskNodeForReplan(graph.rootTaskId, finalRecovery.reason);
+      }
+      if (finalRecovery.kind === 'explicit_container_retry' && isTerminalGroup) {
+        setTerminalRetryState({
+          prompt,
+          groupFolder: group.folder,
+          chatJid,
+          isMain,
+          sessionId: sessionId ?? null,
+          failureSummary: summarizeRuntimeError(error || 'Unknown error'),
+          error: error || 'Unknown error',
+          escalationReason: finalRecovery.reason,
+          graphId: graph.graphId,
+          createdAt: new Date().toISOString(),
+        });
       }
 
       // Detect stale/corrupt session — clear it so the next retry starts fresh.
@@ -1046,16 +1064,17 @@ async function runAgent(
         graph.rootTaskId,
         error || 'Unknown error',
       );
+      const failureActivity =
+        finalRecovery.kind === 'explicit_container_retry'
+          ? `执行失败：${graph.graphId} · edge 需要显式切换到 container 重试 · 输入 /retry-container · ${summarizeRuntimeError(error || 'Unknown error')}`
+          : `执行失败：${graph.graphId} · ${error || 'Unknown error'}`;
       failTerminalTurn({
         chatJid,
         stage: 'failed',
         error: error || 'Unknown error',
-        activity: `执行失败：${graph.graphId} · ${error || 'Unknown error'}`,
+        activity: failureActivity,
       });
-      emitTerminalSystemEvent(
-        chatJid,
-        `执行失败：${graph.graphId} · ${error || 'Unknown error'}`,
-      );
+      emitTerminalSystemEvent(chatJid, failureActivity);
       logger.error(
         { group: group.name, error },
         'Heavy worker execution error',
@@ -1063,6 +1082,11 @@ async function runAgent(
       return 'error';
     }
 
+    if (override?.retryOrigin === 'explicit_container_retry') {
+      clearTerminalRetryState();
+    } else if (isTerminalGroup) {
+      clearTerminalRetryState();
+    }
     commitExecution(effectiveExecutionId);
     completeExecution(effectiveExecutionId);
     completeRootTaskGraph(graph.graphId, graph.rootTaskId);
@@ -1085,14 +1109,32 @@ async function runAgent(
     if (recovery.kind === 'replan') {
       markTaskNodeForReplan(graph.rootTaskId, recovery.reason);
     }
+    if (recovery.kind === 'explicit_container_retry' && isTerminalGroup) {
+      setTerminalRetryState({
+        prompt,
+        groupFolder: group.folder,
+        chatJid,
+        isMain,
+        sessionId: sessionId ?? null,
+        failureSummary: summarizeRuntimeError(error),
+        error,
+        escalationReason: recovery.reason,
+        graphId: graph.graphId,
+        createdAt: new Date().toISOString(),
+      });
+    }
     failRootTaskGraph(graph.graphId, graph.rootTaskId, error);
+    const failureActivity =
+      recovery.kind === 'explicit_container_retry'
+        ? `执行失败：${graph.graphId} · edge 需要显式切换到 container 重试 · 输入 /retry-container · ${summarizeRuntimeError(error)}`
+        : `执行失败：${graph.graphId} · ${error}`;
     failTerminalTurn({
       chatJid,
       stage: 'failed',
       error,
-      activity: `执行失败：${graph.graphId} · ${error}`,
+      activity: failureActivity,
     });
-    emitTerminalSystemEvent(chatJid, `执行失败：${graph.graphId} · ${error}`);
+    emitTerminalSystemEvent(chatJid, failureActivity);
     logger.error({ group: group.name, err }, 'Agent error');
     return 'error';
   } finally {
@@ -1351,6 +1393,66 @@ async function main(): Promise<void> {
   }
 
   // Channel callbacks (shared by all channels)
+  async function retryTerminalOnContainer(): Promise<string> {
+    const retry = getTerminalRetryState();
+    if (!retry) {
+      return '当前没有可在 container 上重试的失败执行。';
+    }
+
+    const group = registeredGroups[retry.chatJid];
+    if (!group) {
+      return `无法找到可重试的 terminal group：${retry.groupFolder}`;
+    }
+
+    emitTerminalSystemEvent(
+      TERMINAL_GROUP_JID,
+      `开始在 container 上重试：${retry.graphId}`,
+    );
+
+    const previousSession = sessions[group.folder];
+    if (retry.sessionId) {
+      sessions[group.folder] = retry.sessionId;
+      setSession(group.folder, retry.sessionId);
+    } else {
+      delete sessions[group.folder];
+      deleteSession(group.folder);
+    }
+
+    try {
+      const status = await runAgent(
+        group,
+        retry.prompt,
+        retry.chatJid,
+        undefined,
+        {
+          executionMode: 'container',
+          retryOrigin: 'explicit_container_retry',
+        },
+      );
+
+      if (status === 'success') {
+        clearTerminalRetryState();
+        return `已在 container 上重新执行：${retry.graphId}`;
+      }
+
+      setTerminalRetryState(retry);
+      return `container 重试失败：${retry.graphId}`;
+    } catch (error) {
+      setTerminalRetryState(retry);
+      throw error;
+    } finally {
+      if (getTerminalRetryState() !== null) {
+        if (previousSession) {
+          sessions[group.folder] = previousSession;
+          setSession(group.folder, previousSession);
+        } else if (!retry.sessionId) {
+          delete sessions[group.folder];
+          deleteSession(group.folder);
+        }
+      }
+    }
+  }
+
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
       // Remote control commands — intercept before storage
@@ -1403,6 +1505,12 @@ async function main(): Promise<void> {
         interruptTerminalTurn();
         emitTerminalSystemEvent(TERMINAL_GROUP_JID, '已打断当前对话（ESC）');
       }
+    },
+    onRetryContainer: async (groupFolder: string) => {
+      if (groupFolder !== TERMINAL_GROUP_FOLDER) {
+        return '当前仅支持 terminal group 使用 /retry-container。';
+      }
+      return retryTerminalOnContainer();
     },
   };
 

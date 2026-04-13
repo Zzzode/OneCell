@@ -74,12 +74,61 @@ export const logger = {
     log('fatal', dataOrMsg, msg),
 };
 
+const LOGGER_PROCESS_HOOKS_KEY = Symbol.for('onecell.nanoclaw.logger.processHooks');
+
+type LoggerProcessHooks = {
+  uncaughtException?: (err: unknown) => void;
+  unhandledRejection?: (reason: unknown) => void;
+};
+
+const loggerProcessHooks = (
+  globalThis as typeof globalThis & {
+    [LOGGER_PROCESS_HOOKS_KEY]?: LoggerProcessHooks;
+  }
+);
+
+function ensureProcessHook(
+  eventName: 'uncaughtException',
+  createHandler: (err: unknown) => void,
+): void;
+function ensureProcessHook(
+  eventName: 'unhandledRejection',
+  createHandler: (reason: unknown) => void,
+): void;
+function ensureProcessHook(
+  eventName: 'uncaughtException' | 'unhandledRejection',
+  createHandler: ((err: unknown) => void) | ((reason: unknown) => void),
+): void {
+  const hooks =
+    loggerProcessHooks[LOGGER_PROCESS_HOOKS_KEY] ??
+    (loggerProcessHooks[LOGGER_PROCESS_HOOKS_KEY] = {});
+
+  if (eventName === 'uncaughtException') {
+    const handler =
+      hooks.uncaughtException ??
+      (createHandler as NonNullable<LoggerProcessHooks['uncaughtException']>);
+    hooks.uncaughtException = handler;
+    if (!process.listeners('uncaughtException').includes(handler)) {
+      process.on('uncaughtException', handler);
+    }
+    return;
+  }
+
+  const handler =
+    hooks.unhandledRejection ??
+    (createHandler as NonNullable<LoggerProcessHooks['unhandledRejection']>);
+  hooks.unhandledRejection = handler;
+  if (!process.listeners('unhandledRejection').includes(handler)) {
+    process.on('unhandledRejection', handler);
+  }
+}
+
 // Route uncaught errors through logger so they get timestamps in stderr
-process.on('uncaughtException', (err) => {
+ensureProcessHook('uncaughtException', (err) => {
   logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason) => {
+ensureProcessHook('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'Unhandled rejection');
 });

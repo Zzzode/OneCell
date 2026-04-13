@@ -1,21 +1,9 @@
-import type { ExecutionContext } from './agent-backend.js';
-import {
-  beginExecution,
-  deriveExecutionLeaseMs,
-  type BeginExecutionOptions,
-  type StartedExecutionLease,
-} from './execution-state.js';
-import {
-  fallbackTaskNodeToHeavy,
-  recordTaskNodeFailure,
-  requireReplanForTaskNode,
-  type TaskFallbackReason,
-} from './task-graph-state.js';
+import { requireReplanForTaskNode, type TaskFallbackReason } from './task-graph-state.js';
 
 export type RuntimeRecoveryDecision =
   | { kind: 'none' }
   | {
-      kind: 'fallback';
+      kind: 'explicit_container_retry';
       reason: Extract<
         TaskFallbackReason,
         'edge_timeout' | 'edge_runtime_unhealthy'
@@ -53,7 +41,7 @@ export function classifyRuntimeRecovery(options: {
   }
 
   return {
-    kind: 'fallback',
+    kind: 'explicit_container_retry',
     reason: /deadline|timeout/i.test(options.error)
       ? 'edge_timeout'
       : 'edge_runtime_unhealthy',
@@ -66,60 +54,4 @@ export function markTaskNodeForReplan(
   now: Date = new Date(),
 ): void {
   requireReplanForTaskNode(taskNodeId, reason, now);
-}
-
-export function prepareHeavyFallbackExecution(options: {
-  scope: Pick<
-    BeginExecutionOptions,
-    'scopeType' | 'scopeId' | 'groupJid' | 'taskId'
-  >;
-  taskNodeId: string;
-  baseWorkspaceVersion?: string | null;
-  previousContext: ExecutionContext;
-  reason: Extract<
-    TaskFallbackReason,
-    'edge_timeout' | 'edge_runtime_unhealthy'
-  >;
-  now?: Date;
-}): {
-  execution: StartedExecutionLease;
-  executionContext: ExecutionContext;
-} {
-  recordTaskNodeFailure({
-    taskId: options.taskNodeId,
-    error: `Edge fallback required: ${options.reason}`,
-    failureClass: 'execution_failure',
-    fallbackTarget: 'heavy',
-    fallbackReason: options.reason,
-    now: options.now,
-  });
-  fallbackTaskNodeToHeavy(options.taskNodeId, options.reason, options.now);
-
-  const execution = beginExecution({
-    ...options.scope,
-    backend: 'container',
-    taskNodeId: options.taskNodeId,
-    baseWorkspaceVersion: options.baseWorkspaceVersion ?? undefined,
-    leaseMs: deriveExecutionLeaseMs(
-      options.previousContext.deadline?.deadlineMs,
-    ),
-    now: options.now,
-  });
-
-  return {
-    execution,
-    executionContext: {
-      ...options.previousContext,
-      executionId: execution.executionId,
-      turnId: execution.turnId,
-      logicalSessionId: execution.logicalSessionId,
-      workerClass: 'heavy',
-      idempotencyKey: `${execution.executionId}:${options.taskNodeId}`,
-      planFragment: {
-        ...(options.previousContext.planFragment ?? { kind: 'single_root' }),
-        fallbackEligible: false,
-        fallbackReason: options.reason,
-      },
-    },
-  };
 }

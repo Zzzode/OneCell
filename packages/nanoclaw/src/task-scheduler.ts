@@ -42,7 +42,6 @@ import { createFrameworkRunContext } from './framework-orchestrator.js';
 import {
   classifyRuntimeRecovery,
   markTaskNodeForReplan,
-  prepareHeavyFallbackExecution,
 } from './framework-recovery.js';
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
@@ -56,10 +55,18 @@ function summarizeRuntimeError(error: string | null | undefined): string {
     ? singleLine
     : `${singleLine.slice(0, 200)}...`;
 }
+
 import {
   runShadowExecutionComparison,
   selectShadowExecution,
 } from './shadow-execution.js';
+
+function appendEscalationHint(
+  error: string,
+  reason: 'edge_timeout' | 'edge_runtime_unhealthy',
+): string {
+  return `${error} Container retry available: ${reason}.`;
+}
 import {
   completeRootTaskGraph,
   failRootTaskGraph,
@@ -228,7 +235,6 @@ async function runTask(
     graph,
     execution,
     executionContext,
-    baseWorkspaceVersion,
   } = frameworkRun;
   const usesHeavyWorker = placement.workerClass === 'heavy';
   const backend = deps.backends[placement.backendId];
@@ -263,6 +269,7 @@ async function runTask(
   let streamedError: string | null = null;
   let latestSuccessfulOutput: string | null = null;
   let sentVisibleMessage = false;
+  let emittedExplicitEscalationMessage = false;
 
   // Keep current behavior: only group-context tasks resume the group's
   // provider session; isolated tasks still execute as single-turn runs.
@@ -302,8 +309,8 @@ async function runTask(
 
   try {
     executionId = execution.executionId;
-    let effectiveExecutionId = execution.executionId;
-    let effectiveBackendId = placement.backendId;
+    const effectiveExecutionId = execution.executionId;
+    const effectiveBackendId = placement.backendId;
 
     const onScheduledExecutionStarted = usesHeavyWorker
       ? (execution: StartedExecution) => {
@@ -318,7 +325,7 @@ async function runTask(
         }
       : undefined;
 
-    let output = await backend.run(
+    const output = await backend.run(
       group,
       {
         prompt: task.prompt,
@@ -369,84 +376,13 @@ async function runTask(
       fallbackEligible: placement.fallbackEligible,
     });
 
-    if (recovery.kind === 'fallback' && executionId) {
+    if (recovery.kind === 'explicit_container_retry') {
       const rawError = streamedError || output.error || 'Unknown error';
-      failExecution(executionId, rawError);
+      error = appendEscalationHint(rawError, recovery.reason);
+      emittedExplicitEscalationMessage = true;
       emitTerminalSystemEvent(
         task.chat_jid,
-        `执行降级：${graph.graphId} · edge → heavy · ${recovery.reason} · ${summarizeRuntimeError(rawError)}`,
-      );
-
-      const fallback = prepareHeavyFallbackExecution({
-        scope: {
-          scopeType,
-          scopeId,
-          groupJid: task.chat_jid,
-          taskId: task.id,
-        },
-        taskNodeId: graph.rootTaskId,
-        baseWorkspaceVersion,
-        previousContext: executionContext,
-        reason: recovery.reason,
-      });
-
-      executionId = fallback.execution.executionId;
-      effectiveExecutionId = fallback.execution.executionId;
-      effectiveBackendId = 'container';
-      streamedError = null;
-      result = null;
-      latestSuccessfulOutput = null;
-
-      output = await deps.backends.container.run(
-        group,
-        {
-          prompt: task.prompt,
-          sessionId,
-          groupFolder: task.group_folder,
-          chatJid: task.chat_jid,
-          isMain,
-          isScheduledTask: true,
-          assistantName: ASSISTANT_NAME,
-          script: task.script || undefined,
-          executionContext: fallback.executionContext,
-        },
-        (execution) => {
-          deps.queue.registerProcess(
-            execution.chatJid,
-            execution.process,
-            execution.executionName,
-            execution.groupFolder,
-            'background',
-          );
-          deps.onExecutionStarted?.(execution);
-        },
-        async (streamedOutput: AgentRunOutput) => {
-          if (markDeletedDuringRun()) {
-            return;
-          }
-          if (executionId) heartbeatExecution(executionId);
-          if (streamedOutput.newSessionId) {
-            if (task.context_mode === 'group') {
-              sessions[task.group_folder] = streamedOutput.newSessionId;
-              setSession(task.group_folder, streamedOutput.newSessionId);
-            } else {
-              updateLogicalSession(fallback.execution.logicalSessionId, {
-                providerSessionId: streamedOutput.newSessionId,
-                status: 'active',
-              });
-            }
-          }
-          if (streamedOutput.status === 'error') {
-            streamedError = streamedOutput.error || 'Unknown error';
-          }
-          if (shouldSurfaceScheduledTaskOutput(streamedOutput.result)) {
-            result = streamedOutput.result;
-            latestSuccessfulOutput = streamedOutput.result;
-            scheduleClose();
-          }
-          deps.queue.notifyIdle(task.chat_jid, 'background');
-          scheduleClose();
-        },
+        `任务失败：${task.id} · ${summarizeRuntimeError(rawError)} · 可显式改用 container 重试`,
       );
     }
 
@@ -494,7 +430,8 @@ async function runTask(
       });
     }
 
-    error = streamedError || output.error || error;
+    const runtimeError = streamedError || output.error || null;
+    error = error || runtimeError;
     if (output.status === 'error') {
       error = error || 'Unknown error';
     } else if (
@@ -540,17 +477,28 @@ async function runTask(
     );
   } catch (err) {
     if (closeTimer) clearTimeout(closeTimer);
-    error = err instanceof Error ? err.message : String(err);
+    const rawError = err instanceof Error ? err.message : String(err);
     const recovery = classifyRuntimeRecovery({
-      error,
+      error: rawError,
       workerClass: placement.workerClass,
       fallbackEligible: placement.fallbackEligible,
     });
+    error =
+      recovery.kind === 'explicit_container_retry'
+        ? appendEscalationHint(rawError, recovery.reason)
+        : rawError;
     if (executionId) failExecution(executionId, error);
     if (recovery.kind === 'replan') {
       markTaskNodeForReplan(graph.rootTaskId, recovery.reason);
     }
     failRootTaskGraph(graph.graphId, graph.rootTaskId, error);
+    if (recovery.kind === 'explicit_container_retry') {
+      emittedExplicitEscalationMessage = true;
+      emitTerminalSystemEvent(
+        task.chat_jid,
+        `任务失败：${task.id} · ${summarizeRuntimeError(rawError)} · 可显式改用 container 重试`,
+      );
+    }
     logger.error({ taskId: task.id, error }, 'Task failed');
   }
 
@@ -568,7 +516,9 @@ async function runTask(
   }
 
   if (error) {
-    emitTerminalSystemEvent(task.chat_jid, `任务失败：${task.id}`);
+    if (!emittedExplicitEscalationMessage) {
+      emitTerminalSystemEvent(task.chat_jid, `任务失败：${task.id}`);
+    }
   } else if (!sentVisibleMessage) {
     emitTerminalSystemEvent(task.chat_jid, `任务完成：${task.id}`);
   }

@@ -5,14 +5,15 @@
   "providers": {
     "anthropic": {
       "type": "anthropic",
-      "apiKey": "${ANTHROPIC_API_KEY}",
-      "model": "claude-sonnet-4-20250514"
+      "baseUrl": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+      "apiKey": "sk-sp-ae8ba5827cc0473784d0098a1d7b4615",
+      "model": "glm-5"
     },
     "openai": {
       "type": "openai",
-      "apiKey": "${OPENAI_API_KEY}",
-      "baseUrl": "https://api.openai.com/v1",
-      "model": "gpt-4o"
+      "apiKey": "sk-sp-ae8ba5827cc0473784d0098a1d7b4615",
+      "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
+      "model": "glm-5"
     }
   },
   "edge": {

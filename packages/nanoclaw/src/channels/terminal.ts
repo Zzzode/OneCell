@@ -51,6 +51,10 @@ const CLEAR_SCREEN = '\x1b[2J\x1b[H';
 
 type TerminalExecutionHealth = 'healthy' | 'missing' | 'stale' | 'terminal';
 type TerminalGraphHealth = 'healthy' | 'stale' | 'terminal' | 'idle';
+type TerminalSidePanelTab = 'turn' | 'agents' | 'graph' | 'tasks';
+type TerminalDrawerTab = 'logs';
+type TerminalOverlayKind = 'help' | 'focus' | 'system' | 'session' | 'retry-container' | 'interrupt';
+
 type LocalCommand =
   | '/help'
   | '/status'
@@ -63,6 +67,7 @@ type LocalCommand =
   | '/session'
   | '/logs'
   | '/clear'
+  | '/retry-container'
   | '/exit'
   | '/quit';
 
@@ -544,8 +549,20 @@ class TerminalChannel implements Channel {
   private lastScreenSignature: string | null = null;
   private latestSystemEvent: string | null = null;
   private latestAssistantMessage: string | null = null;
-  private inspectorTitle: string | null = null;
-  private inspectorBody: string | null = null;
+  private sidePanel: {
+    isOpen: boolean;
+    tab: TerminalSidePanelTab;
+    body: string | null;
+  } = { isOpen: false, tab: 'turn', body: null };
+  private drawer: {
+    isOpen: boolean;
+    tab: TerminalDrawerTab;
+    body: string | null;
+  } = { isOpen: false, tab: 'logs', body: null };
+  private overlay: {
+    kind: TerminalOverlayKind | null;
+    body: string | null;
+  } = { kind: null, body: null };
   private stdinDataHandler: ((chunk: Buffer) => void) | null = null;
 
   constructor(private readonly opts: ChannelOpts) {}
@@ -602,21 +619,23 @@ class TerminalChannel implements Channel {
     const next = cycleTerminalFocus(direction);
     if (!next) return;
     const detail = buildTerminalFocusSummary();
-    this.setInspector(
+    this.openOverlay(
       'focus',
       detail ? `focus -> ${next}\n\n${detail}` : `focus -> ${next}`,
     );
-    this.renderScreen(true);
   }
 
   private async handleInterrupt(): Promise<void> {
+    if (this.dismissHighestPrioritySurface()) {
+      this.renderScreen(true);
+      return;
+    }
     const isBusy = this.typingByJid.has(TERMINAL_GROUP_JID);
     if (!isBusy && !this.hasActiveExecutions()) {
       return;
     }
     this.latestSystemEvent = '已请求打断当前执行';
-    this.setInspector('interrupt', '已请求打断当前执行。');
-    this.renderScreen(true);
+    this.openOverlay('interrupt', '已请求打断当前执行。');
     await this.opts.onCancel?.(TERMINAL_GROUP_FOLDER);
   }
 
@@ -652,8 +671,7 @@ class TerminalChannel implements Channel {
 
     const now = new Date().toISOString();
     this.lastAssistantMessageByJid.delete(TERMINAL_GROUP_JID);
-    this.inspectorTitle = null;
-    this.inspectorBody = null;
+    this.closeOverlay();
     recordTerminalTranscript('user', text);
     this.renderScreen(true);
     this.opts.onMessage(TERMINAL_GROUP_JID, {
@@ -682,7 +700,7 @@ class TerminalChannel implements Channel {
         process.exit(0);
         return true;
       case '/help':
-        this.showInspector(
+        this.openOverlay(
           'help',
           [
             '可用命令：',
@@ -699,26 +717,27 @@ class TerminalChannel implements Channel {
             '/new  清空当前 terminal provider session',
             '/session clear 清空当前 terminal provider session',
             '/logs [n] 查看最近系统事件',
-            '/clear  清空当前 inspector',
+            '/clear  关闭辅助界面',
+            '/retry-container  在 container 上重试最近一次可重试 edge 失败',
             'Shift+Up/Down 切换当前 focus agent',
-            'ESC    打断当前正在执行的对话',
+            'ESC 优先关闭 overlay，否则打断当前正在执行的对话',
             '/quit   退出终端',
           ].join('\n'),
         );
         return true;
       case '/status':
-        this.showInspector('status', buildTerminalStatusSummary());
+        this.openSidePanel('turn', buildTerminalStatusSummary());
         return true;
       case '/agents':
-        this.showInspector('agents', buildTerminalAgentsSummary());
+        this.openSidePanel('agents', buildTerminalAgentsSummary());
         return true;
       case '/graph':
-        this.showInspector('graph', buildTerminalGraphSummary());
+        this.openSidePanel('graph', buildTerminalGraphSummary());
         return true;
       case '/focus': {
         const target = parts.slice(1).join(' ').trim();
         if (!target) {
-          this.showInspector(
+          this.openOverlay(
             'focus',
             '用法：/focus <root|planner|worker N|aggregate|clear>',
           );
@@ -726,11 +745,11 @@ class TerminalChannel implements Channel {
         }
         const result = setTerminalFocus(target);
         const detail = buildTerminalFocusSummary();
-        this.showInspector('focus', detail ? `${result}\n\n${detail}` : result);
+        this.openOverlay('focus', detail ? `${result}\n\n${detail}` : result);
         return true;
       }
       case '/tasks':
-        this.showInspector('tasks', buildTerminalTasksSummary());
+        this.openSidePanel('tasks', buildTerminalTasksSummary());
         return true;
       case '/task':
         await this.handleTaskCommand(parts.slice(1));
@@ -743,7 +762,7 @@ class TerminalChannel implements Channel {
         return true;
       case '/logs': {
         const count = Number.parseInt(parts[1] || '', 10);
-        this.showInspector(
+        this.openDrawer(
           'logs',
           buildTerminalLogsSummary(
             Number.isNaN(count) ? DEFAULT_LOG_TAIL : count,
@@ -752,23 +771,43 @@ class TerminalChannel implements Channel {
         return true;
       }
       case '/clear':
-        this.inspectorTitle = null;
-        this.inspectorBody = null;
+        this.closeAuxiliarySurfaces();
         this.renderScreen(true);
+        return true;
+      case '/retry-container':
+        await this.handleRetryContainerCommand();
         return true;
       default:
         return false;
     }
   }
 
+  private async handleRetryContainerCommand(): Promise<void> {
+    try {
+      const result = await this.opts.onRetryContainer?.(TERMINAL_GROUP_FOLDER);
+      this.openOverlay(
+        'retry-container',
+        result ?? '当前 terminal 不支持 /retry-container。',
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.openOverlay(
+        'retry-container',
+        `执行 /retry-container 时出错：${message}`,
+      );
+    }
+  }
+
   private async handleTaskCommand(args: string[]): Promise<void> {
-    this.showInspector('task', executeTerminalTaskCommand(args));
+    const summary =
+      args.length === 0 ? buildTerminalTasksSummary() : executeTerminalTaskCommand(args);
+    this.openSidePanel('tasks', summary);
   }
 
   private async handleSessionCommand(args: string[]): Promise<void> {
     const action = args[0];
     if (!action || (action !== 'clear' && action !== 'new')) {
-      this.showInspector('session', '用法：/session <clear>');
+      this.openOverlay('session', '用法：/session <clear>');
       return;
     }
 
@@ -780,7 +819,8 @@ class TerminalChannel implements Channel {
     clearTerminalEventLog();
     clearTerminalReplyLog();
     clearTerminalTranscriptLog();
-    this.showInspector(
+    this.closeAuxiliarySurfaces();
+    this.openOverlay(
       'session',
       '已清空当前 terminal provider session。下一条消息将从新会话开始。',
     );
@@ -797,8 +837,9 @@ class TerminalChannel implements Channel {
       recentSystemEvents: terminalEventTail(4),
       recentReplies: terminalReplyTail(4),
       recentTranscript: terminalTranscriptTail(12),
-      inspectorTitle: this.inspectorTitle,
-      inspectorBody: this.inspectorBody,
+      sidePanel: this.sidePanel,
+      drawer: this.drawer,
+      overlay: this.overlay,
     });
     return `${panel}\n${inputPrompt}`;
   }
@@ -817,14 +858,53 @@ class TerminalChannel implements Channel {
     this.rl.prompt(true);
   }
 
-  private setInspector(title: string, body: string): void {
-    this.inspectorTitle = title;
-    this.inspectorBody = body;
+  private openSidePanel(tab: TerminalSidePanelTab, body: string): void {
+    this.sidePanel = { isOpen: true, tab, body };
+    this.renderScreen(true);
   }
 
-  private showInspector(title: string, body: string): void {
-    this.setInspector(title, body);
+  private openDrawer(tab: TerminalDrawerTab, body: string): void {
+    this.drawer = { isOpen: true, tab, body };
     this.renderScreen(true);
+  }
+
+  private openOverlay(kind: TerminalOverlayKind, body: string): void {
+    this.overlay = { kind, body };
+    this.renderScreen(true);
+  }
+
+  private closeOverlay(): void {
+    this.overlay = { kind: null, body: null };
+  }
+
+  private closeDrawer(): void {
+    this.drawer = { isOpen: false, tab: this.drawer.tab, body: null };
+  }
+
+  private closeSidePanel(): void {
+    this.sidePanel = { isOpen: false, tab: this.sidePanel.tab, body: null };
+  }
+
+  private dismissHighestPrioritySurface(): boolean {
+    if (this.overlay.kind) {
+      this.closeOverlay();
+      return true;
+    }
+    if (this.drawer.isOpen) {
+      this.closeDrawer();
+      return true;
+    }
+    if (this.sidePanel.isOpen) {
+      this.closeSidePanel();
+      return true;
+    }
+    return false;
+  }
+
+  private closeAuxiliarySurfaces(): void {
+    this.closeSidePanel();
+    this.closeDrawer();
+    this.closeOverlay();
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
@@ -853,10 +933,8 @@ class TerminalChannel implements Channel {
     this.latestSystemEvent = normalized;
     if (shouldPromoteSystemEvent(normalized)) {
       const focus = buildTerminalFocusSummary();
-      this.setInspector(
-        'system',
-        focus ? `${normalized}\n\n${focus}` : normalized,
-      );
+      this.openOverlay('system', focus ? `${normalized}\n\n${focus}` : normalized);
+      return;
     }
     this.renderScreen(true);
   }
@@ -892,8 +970,9 @@ class TerminalChannel implements Channel {
     this.lastScreenSignature = null;
     this.latestSystemEvent = null;
     this.latestAssistantMessage = null;
-    this.inspectorTitle = null;
-    this.inspectorBody = null;
+    this.sidePanel = { isOpen: false, tab: 'turn', body: null };
+    this.drawer = { isOpen: false, tab: 'logs', body: null };
+    this.overlay = { kind: null, body: null };
     clearTerminalReplyLog();
     clearTerminalTranscriptLog();
     if (activeTerminalChannel === this) {
