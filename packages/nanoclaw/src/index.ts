@@ -27,7 +27,10 @@ import {
   TIMEZONE,
 } from './config.js';
 import { initConfig, getAppConfig } from './config.js';
-import { resolveConfigPath } from './config-loader.js';
+import {
+  renderStartupConfigError,
+  resolveConfigPath,
+} from './config-loader.js';
 import {
   getChannelFactory,
   getRegisteredChannelNames,
@@ -1614,7 +1617,13 @@ const isDirectRun =
 
 if (isDirectRun) {
   main().catch((err) => {
-    logger.error({ err }, 'Failed to start NanoClaw');
+    const configPath = resolveConfigPath(process.argv);
+    const startupHint = renderStartupConfigError(err, configPath);
+    if (startupHint) {
+      logger.error(startupHint);
+    } else {
+      logger.error({ err }, 'Failed to start NanoClaw');
+    }
     process.exit(1);
   });
 }

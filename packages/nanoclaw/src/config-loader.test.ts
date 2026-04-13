@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   loadConfigFile,
   loadConfigFromArgv,
+  renderStartupConfigError,
   resolveConfigPath,
 } from './config-loader.js';
 
@@ -64,6 +65,35 @@ describe('resolveConfigPath', () => {
   it('picks the first --config when multiple are provided', () => {
     const argv = ['--config', 'first.json', '--config', 'second.json'];
     expect(resolveConfigPath(argv)).toBe('first.json');
+  });
+});
+
+describe('renderStartupConfigError', () => {
+  it('turns a missing default config error into a friendly startup hint', () => {
+    const cwd = process.cwd();
+    const configPath = path.join(cwd, 'nanoclaw.config.json');
+
+    const rendered = renderStartupConfigError(
+      new Error(`Config file not found: ${configPath}`),
+      configPath,
+    );
+
+    expect(rendered).toContain('缺少配置文件：nanoclaw.config.json');
+    expect(rendered).toContain(
+      'cp nanoclaw.config.terminal.example.json nanoclaw.config.json',
+    );
+    expect(rendered).toContain(
+      '--config nanoclaw.config.terminal.example.json',
+    );
+  });
+
+  it('leaves unrelated startup errors unchanged', () => {
+    const rendered = renderStartupConfigError(
+      new Error('boom'),
+      path.join(process.cwd(), 'nanoclaw.config.json'),
+    );
+
+    expect(rendered).toBeNull();
   });
 });
 

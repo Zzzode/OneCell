@@ -63,3 +63,5 @@ benchmarks/results/*.csv
 benchmarks/results/*.md
 .cache
 compile_commands.json
+
+.superpowers

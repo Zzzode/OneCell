@@ -48,8 +48,13 @@ export function TextInput({
     [externalValue, onChange],
   )
 
+  // ESC and Shift+Arrow must work even when busy (for interrupting/focusing)
   useInput(
     (input, key) => {
+      if (key.escape) {
+        onEscape()
+        return
+      }
       if (key.shift && key.upArrow) {
         onShiftUp?.()
         return
@@ -58,7 +63,12 @@ export function TextInput({
         onShiftDown?.()
         return
       }
+    },
+  )
 
+  // Text editing input — disabled when busy
+  useInput(
+    (input, key) => {
       if (key.return) {
         const trimmed = value.trim()
         if (trimmed) {
@@ -66,11 +76,6 @@ export function TextInput({
           setValue('')
           setCursorOffset(0)
         }
-        return
-      }
-
-      if (key.escape) {
-        onEscape()
         return
       }
 
