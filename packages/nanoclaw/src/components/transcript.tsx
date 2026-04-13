@@ -7,7 +7,7 @@ const theme = getTheme(resolveTheme())
 
 interface TranscriptProps {
   entries: TerminalPanelTranscriptEntry[]
-  width: number
+  width?: number
   maxLines?: number
 }
 
@@ -34,7 +34,7 @@ function StepLine({ text, isLast }: { text: string; isLast: boolean }) {
   )
 }
 
-export function Transcript({ entries, width, maxLines = 12 }: TranscriptProps) {
+export function Transcript({ entries, maxLines = 12 }: TranscriptProps) {
   if (entries.length === 0) {
     return <Text color={theme.subtle}>No transcript yet.</Text>
   }
