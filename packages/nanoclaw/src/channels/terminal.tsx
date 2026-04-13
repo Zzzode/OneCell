@@ -38,6 +38,7 @@ import {
   setTerminalFocus,
 } from '../terminal-observability.js';
 import { deleteScheduledTask } from '../task-control.js';
+import { silenceLogger, unsilenceLogger } from '../logger.js';
 import type { Channel } from '../types.js';
 import { formatDisplayDateTime } from '../timezone.js';
 import { TerminalApp } from '../terminal-app.js';
@@ -307,12 +308,6 @@ function clearTerminalTranscriptLog(): void {
   terminalTranscript = [];
 }
 
-function shouldPromoteSystemEvent(text: string): boolean {
-  return /失败|错误|异常|降级|fallback|failed|error|timeout|stale|warning/i.test(
-    text,
-  );
-}
-
 export function buildTerminalLogsSummary(limit = DEFAULT_LOG_TAIL): string {
   const safeLimit = Number.isFinite(limit)
     ? Math.max(1, Math.trunc(limit))
@@ -578,6 +573,7 @@ class TerminalChannel implements Channel {
   async connect(): Promise<void> {
     this.connected = true;
     activeTerminalChannel = this;
+    silenceLogger();
     this.opts.onChatMetadata(
       TERMINAL_GROUP_JID,
       new Date().toISOString(),
@@ -830,6 +826,7 @@ class TerminalChannel implements Channel {
     } else {
       this.inkInstance = render(<TerminalApp {...props} />, {
         exitOnCtrlC: false,
+        alternateScreen: true,
       });
     }
   }
@@ -907,14 +904,6 @@ class TerminalChannel implements Channel {
     recordTerminalEvent(normalized);
     recordTerminalTranscript('system', normalized);
     this.latestSystemEvent = normalized;
-    if (shouldPromoteSystemEvent(normalized)) {
-      const focus = buildTerminalFocusSummary();
-      this.openOverlay(
-        'system',
-        focus ? `${normalized}\n\n${focus}` : normalized,
-      );
-      return;
-    }
     this.renderScreen(true);
   }
 
@@ -943,6 +932,7 @@ class TerminalChannel implements Channel {
   }
 
   async disconnect(): Promise<void> {
+    unsilenceLogger();
     if (this.inkInstance) {
       this.inkInstance.unmount()
       this.inkInstance = null

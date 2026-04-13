@@ -24,17 +24,19 @@ function AssistantLine({ text }: { text: string }) {
   )
 }
 
-function StepLine({ text, isLast }: { text: string; isLast: boolean }) {
+function StepLine({ text, isLast, width }: { text: string; isLast: boolean; width?: number }) {
   const prefix = isLast ? '  └─ ' : '  ├─ '
+  const maxLen = (width ?? 100) - prefix.length - 1
+  const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text
   return (
     <Box>
       <Text color={theme.inactive}>{prefix}</Text>
-      <Text color={theme.inactive}>{text}</Text>
+      <Text color={theme.inactive}>{display}</Text>
     </Box>
   )
 }
 
-export function Transcript({ entries, maxLines = 12 }: TranscriptProps) {
+export function Transcript({ entries, width, maxLines = 12 }: TranscriptProps) {
   if (entries.length === 0) {
     return <Text color={theme.subtle}>No transcript yet.</Text>
   }
@@ -48,7 +50,7 @@ export function Transcript({ entries, maxLines = 12 }: TranscriptProps) {
   function flushSteps() {
     pendingSteps.forEach((text, i) => {
       lines.push(
-        <StepLine key={`step-${lines.length}`} text={text} isLast={i === pendingSteps.length - 1} />,
+        <StepLine key={`step-${lines.length}`} text={text} isLast={i === pendingSteps.length - 1} width={width} />,
       )
     })
     pendingSteps = []

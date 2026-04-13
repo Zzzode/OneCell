@@ -30,6 +30,7 @@ interface LaneState {
   isTaskContainer: boolean;
   runningTaskId: string | null;
   retryScheduled: boolean;
+  retryTimer: ReturnType<typeof setTimeout> | null;
   process: ChildProcess | null;
   containerName: string | null;
   groupFolder: string | null;
@@ -63,6 +64,7 @@ export class GroupQueue {
           isTaskContainer: false,
           runningTaskId: null,
           retryScheduled: false,
+          retryTimer: null,
           process: null,
           containerName: null,
           groupFolder: null,
@@ -74,6 +76,7 @@ export class GroupQueue {
           isTaskContainer: true,
           runningTaskId: null,
           retryScheduled: false,
+          retryTimer: null,
           process: null,
           containerName: null,
           groupFolder: null,
@@ -278,6 +281,10 @@ export class GroupQueue {
       this.closeStdin(groupJid, 'foreground');
       state.foreground.idleWaiting = false;
       state.foreground.retryScheduled = false;
+      if (state.foreground.retryTimer) {
+        clearTimeout(state.foreground.retryTimer);
+        state.foreground.retryTimer = null;
+      }
       state.foreground.retryCount = 0;
     }
 
@@ -309,6 +316,7 @@ export class GroupQueue {
     state.isTaskContainer = false;
     this.getGroup(groupJid).pendingMessages = false;
     state.retryScheduled = false;
+    state.retryTimer = null;
     this.activeCount++;
 
     logger.debug(
@@ -390,8 +398,9 @@ export class GroupQueue {
       groupJid,
       `执行失败，${Math.round(delayMs / 1000)} 秒后重试（第 ${foreground.retryCount} 次）`,
     );
-    setTimeout(() => {
-      if (!this.shuttingDown) {
+    foreground.retryTimer = setTimeout(() => {
+      foreground.retryTimer = null;
+      if (!this.shuttingDown && foreground.retryScheduled) {
         this.enqueueMessageCheck(groupJid);
       }
     }, delayMs);

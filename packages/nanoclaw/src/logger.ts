@@ -13,10 +13,27 @@ const MSG_COLOR = '\x1b[36m';
 const RESET = '\x1b[39m';
 const FULL_RESET = '\x1b[0m';
 
-const defaultLevel =
+const envLevel =
   (process.env.LOG_LEVEL as Level | undefined) ||
-  (process.env.TERMINAL_CHANNEL === 'true' ? 'error' : 'info');
-const threshold = LEVELS[defaultLevel] ?? LEVELS.info;
+  (process.env.TERMINAL_CHANNEL === 'true' ? 'silent' : 'info');
+const SILENT = 100;
+const envThreshold =
+  envLevel === 'silent'
+    ? SILENT
+    : (LEVELS[envLevel] ?? LEVELS.info);
+
+// Runtime silence flag — set by the terminal channel when Ink is managing
+// the screen.  Any write to stdout/stderr between Ink frames corrupts
+// Ink's cursor tracking and causes duplicate output.
+let silenced = false;
+
+export function silenceLogger(): void {
+  silenced = true;
+}
+
+export function unsilenceLogger(): void {
+  silenced = false;
+}
 
 function formatErr(err: unknown): string {
   if (err instanceof Error) {
@@ -47,7 +64,8 @@ function log(
   dataOrMsg: Record<string, unknown> | string,
   msg?: string,
 ): void {
-  if (LEVELS[level] < threshold) return;
+  if (LEVELS[level] < envThreshold) return;
+  if (silenced && level !== 'fatal') return;
   const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
   const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
   if (typeof dataOrMsg === 'string') {

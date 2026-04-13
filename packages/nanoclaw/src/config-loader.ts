@@ -1,6 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+const DEFAULT_CONFIG_BASENAME = 'nanoclaw.config.json';
+const TERMINAL_EXAMPLE_CONFIG_BASENAME =
+  'nanoclaw.config.terminal.example.json';
+
 import type { NanoclawConfigFile } from './nanoclaw-config.js';
 import type { ResolvedNanoclawConfig } from './nanoclaw-config.js';
 import { resolveConfig } from './nanoclaw-config.js';
@@ -16,7 +20,7 @@ export function resolveConfigPath(argv: string[]): string {
       return argv[i + 1]!;
     }
   }
-  return path.join(process.cwd(), 'nanoclaw.config.json');
+  return path.join(process.cwd(), DEFAULT_CONFIG_BASENAME);
 }
 
 /**
@@ -24,6 +28,25 @@ export function resolveConfigPath(argv: string[]): string {
  * validated `ResolvedNanoclawConfig`. Throws descriptive errors for missing
  * files, invalid JSON, or validation failures.
  */
+export function renderStartupConfigError(
+  error: unknown,
+  configPath: string,
+): string | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const isMissingConfig =
+    message.startsWith('Config file not found:') &&
+    path.basename(configPath) === DEFAULT_CONFIG_BASENAME;
+
+  if (!isMissingConfig) {
+    return null;
+  }
+
+  return [
+    `缺少配置文件：${DEFAULT_CONFIG_BASENAME}`,
+    `cp ${TERMINAL_EXAMPLE_CONFIG_BASENAME} ${DEFAULT_CONFIG_BASENAME} 后填入 API key，或 --config ${TERMINAL_EXAMPLE_CONFIG_BASENAME}`,
+  ].join('\n');
+}
+
 export function loadConfigFile(configPath: string): ResolvedNanoclawConfig {
   let raw: string;
   try {
