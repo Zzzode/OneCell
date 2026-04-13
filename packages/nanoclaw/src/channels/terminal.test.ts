@@ -525,6 +525,7 @@ describe('terminal ui helpers', () => {
     expect(summary).toContain('framework.commitConflictRate: 0.25');
   });
 
+
   it('renders recent system events for `/logs`', () => {
     appendTerminalEventForTests('任务开始：task-active');
     appendTerminalEventForTests('执行失败，5 秒后重试（第 1 次）');
@@ -636,6 +637,38 @@ describe('terminal ui helpers', () => {
     }
   });
 
+  it('treats bare `/task` like `/tasks`', async () => {
+    vi.mocked(getAllTasks).mockReturnValue([]);
+    vi.mocked(listExecutionStates).mockReturnValue([]);
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('/task');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(finalFrame).toContain('side panel · tasks');
+      expect(finalFrame).toContain('当前没有任务。');
+      expect(finalFrame).not.toContain('用法：/task');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
   it('clears terminal session via `/new`', async () => {
     const onResetSession = vi.fn();
     const factory = getChannelFactory('terminal');
@@ -656,6 +689,74 @@ describe('terminal ui helpers', () => {
     expect(onResetSession).toHaveBeenCalledWith('terminal_canary');
     expect(resetTerminalObservability).toHaveBeenCalledTimes(1);
     await channel!.disconnect();
+  });
+
+  it('invokes explicit container retry via `/retry-container`', async () => {
+    const onRetryContainer = vi
+      .fn()
+      .mockResolvedValue('已在 container 上重新执行：graph:retryable');
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    const factory = getChannelFactory('terminal');
+    const channel = factory!({
+      onMessage: vi.fn(),
+      onChatMetadata: vi.fn(),
+      onRetryContainer,
+      registeredGroups: () => ({}),
+    });
+
+    try {
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('/retry-container');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(onRetryContainer).toHaveBeenCalledWith('terminal_canary');
+      expect(
+        writeSpy.mock.calls.some(([chunk]) =>
+          String(chunk).includes('已在 container 上重新执行：graph:retryable'),
+        ),
+      ).toBe(true);
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('shows a user-facing error when `/retry-container` callback rejects', async () => {
+    const onRetryContainer = vi
+      .fn()
+      .mockRejectedValue(new Error('container unavailable'));
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    const factory = getChannelFactory('terminal');
+    const channel = factory!({
+      onMessage: vi.fn(),
+      onChatMetadata: vi.fn(),
+      onRetryContainer,
+      registeredGroups: () => ({}),
+    });
+
+    try {
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('/retry-container');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(onRetryContainer).toHaveBeenCalledWith('terminal_canary');
+      expect(
+        writeSpy.mock.calls.some(([chunk]) =>
+          String(chunk).includes('执行 /retry-container 时出错：container unavailable'),
+        ),
+      ).toBe(true);
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   it('handles `/focus` command via observability store', async () => {
@@ -978,6 +1079,231 @@ describe('terminal ui helpers', () => {
       const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
       expect(finalFrame).not.toContain('旧回复');
       expect(finalFrame).toContain('已清空当前 terminal provider session');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('renders `/help` as an overlay-oriented surface instead of inspector copy', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('/help');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(finalFrame).toContain('overlay');
+      expect(finalFrame).not.toContain('Inspector: help');
+      expect(finalFrame).not.toContain('/clear  清空当前 inspector');
+      expect(finalFrame).toContain('/quit   退出终端');
+      expect(finalFrame).toContain('ESC 优先关闭 overlay，否则打断当前正在执行的对话');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('renders `/logs` in a bottom drawer instead of inspector copy', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      appendTerminalEventForTests('drawer event 1');
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('/logs 1');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(finalFrame).toContain('drawer');
+      expect(finalFrame).toContain('logs');
+      expect(finalFrame).not.toContain('Inspector: logs');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('renders `/status` in the right side panel instead of inspector copy', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('/status');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(finalFrame).toContain('turn');
+      expect(finalFrame).not.toContain('Inspector: status');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('dismisses help overlay on ESC before calling onCancel', async () => {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
+    vi.mocked(listExecutionStates).mockReturnValue([]);
+    vi.mocked(listTaskGraphs).mockReturnValue([]);
+    const onCancel = vi.fn();
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        onCancel,
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('/help');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      process.stdin.emit('data', Buffer.from([0x1b]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(finalFrame).not.toContain('overlay');
+      expect(onCancel).not.toHaveBeenCalled();
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('dismisses drawer then side panel on ESC before interrupting active work', async () => {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
+    const onCancel = vi.fn();
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        onCancel,
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+      await channel!.setTyping?.('term:canary-group', true);
+
+      readlineHarness.emitLine('/status');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      readlineHarness.emitLine('/logs 1');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      process.stdin.emit('data', Buffer.from([0x1b]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const afterFirstEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(afterFirstEsc).toContain('side panel · turn');
+      expect(afterFirstEsc).not.toContain('drawer · logs');
+      expect(onCancel).not.toHaveBeenCalled();
+
+      process.stdin.emit('data', Buffer.from([0x1b]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const afterSecondEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(afterSecondEsc).not.toContain('side panel · turn');
+      expect(onCancel).not.toHaveBeenCalled();
+
+      process.stdin.emit('data', Buffer.from([0x1b]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const afterThirdEsc = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(afterThirdEsc).toContain('overlay · interrupt');
+      expect(onCancel).toHaveBeenCalledWith('terminal_canary');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('clears auxiliary surfaces while preserving transcript on `/clear`', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      readlineHarness.emitLine('keep this transcript');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      readlineHarness.emitLine('/help');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      readlineHarness.emitLine('/logs 1');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      readlineHarness.emitLine('/clear');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(finalFrame).toContain('keep this transcript');
+      expect(finalFrame).not.toContain('overlay');
+      expect(finalFrame).not.toContain('drawer');
+      expect(finalFrame).not.toContain('Inspector:');
 
       await channel!.disconnect();
     } finally {

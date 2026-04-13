@@ -196,15 +196,18 @@ function section(
   lines: string[],
   width: number,
   maxWrapLines = 2,
+  preserveSpacing = false,
 ): string[] {
   const body = lines.length > 0 ? lines : ['empty'];
   const output = [`[ ${title} ]`];
   for (const line of body) {
-    const wrapped = line.includes('\n')
-      ? line
-          .split('\n')
-          .flatMap((segment) => wrapText(segment, width, maxWrapLines))
-      : wrapText(line, width, maxWrapLines);
+    const wrapped = preserveSpacing
+      ? [clampText(line, width)]
+      : line.includes('\n')
+        ? line
+            .split('\n')
+            .flatMap((segment) => wrapText(segment, width, maxWrapLines))
+        : wrapText(line, width, maxWrapLines);
     if (wrapped.length === 0) {
       output.push('');
       continue;
@@ -468,9 +471,9 @@ function buildRecentLines(
     .filter(Boolean);
 }
 
-function buildInspectorLines(body: string | null | undefined): string[] {
-  if (!body) return ['Inspector is empty.'];
-  return body.split('\n').slice(0, 6);
+function buildSurfaceLines(body: string | null | undefined): string[] {
+  if (!body) return ['empty'];
+  return body.split('\n').map((line) => line.trimEnd());
 }
 
 function renderFrame(options: {
@@ -505,8 +508,9 @@ function buildIdlePanel(options: {
   recentSystemEvents?: string[];
   recentReplies?: string[];
   recentTranscript?: TerminalPanelTranscriptEntry[];
-  inspectorTitle?: string | null;
-  inspectorBody?: string | null;
+  sidePanel?: { isOpen: boolean; tab: string; body: string | null };
+  drawer?: { isOpen: boolean; tab: string; body: string | null };
+  overlay?: { kind: string | null; body: string | null };
   width: number;
   height: number;
 }): string {
@@ -551,15 +555,36 @@ function buildIdlePanel(options: {
       1,
     ),
   ];
-  const bottom = options.inspectorBody
+  const rightExtras = options.sidePanel?.isOpen
     ? [
         ...section(
-          options.inspectorTitle
-            ? `Inspector: ${options.inspectorTitle}`
-            : 'Inspector',
-          buildInspectorLines(options.inspectorBody),
+          `side panel · ${options.sidePanel.tab}`,
+          buildSurfaceLines(options.sidePanel.body),
           Math.max(20, options.width),
           1,
+        ),
+      ]
+    : [];
+  right.push(...rightExtras);
+  const bottom = options.drawer?.isOpen
+    ? [
+        ...section(
+          `drawer · ${options.drawer.tab}`,
+          buildSurfaceLines(options.drawer.body),
+          Math.max(20, options.width),
+          1,
+          true,
+        ),
+      ]
+    : [];
+  const overlay = options.overlay?.kind
+    ? [
+        ...section(
+          `overlay · ${options.overlay.kind}`,
+          buildSurfaceLines(options.overlay.body),
+          Math.max(20, options.width),
+          1,
+          true,
         ),
       ]
     : [];
@@ -567,12 +592,12 @@ function buildIdlePanel(options: {
   return renderFrame({
     width: options.width,
     statusLine: options.statusLine,
-    top,
+    top: [...top, ...overlay],
     left,
     right,
     bottom,
     footer:
-      'Keys: Shift+Up/Down focus | ESC interrupt | /logs raw events | /help',
+      'Keys: Shift+Up/Down focus | ESC dismiss surface / interrupt | /logs raw events | /help',
   });
 }
 
@@ -584,8 +609,9 @@ export function buildTerminalPanel(options: {
   recentSystemEvents?: string[];
   recentReplies?: string[];
   recentTranscript?: TerminalPanelTranscriptEntry[];
-  inspectorTitle?: string | null;
-  inspectorBody?: string | null;
+  sidePanel?: { isOpen: boolean; tab: string; body: string | null };
+  drawer?: { isOpen: boolean; tab: string; body: string | null };
+  overlay?: { kind: string | null; body: string | null };
   chatJid?: string;
   width?: number;
   height?: number;
@@ -663,15 +689,36 @@ export function buildTerminalPanel(options: {
       1,
     ),
   ];
-  const bottom = options.inspectorBody
+  if (options.sidePanel?.isOpen) {
+    right.push(
+      ...section(
+        `side panel · ${options.sidePanel.tab}`,
+        buildSurfaceLines(options.sidePanel.body),
+        Math.max(24, width),
+        1,
+        true,
+      ),
+    );
+  }
+  const bottom = options.drawer?.isOpen
     ? [
         ...section(
-          options.inspectorTitle
-            ? `Inspector: ${options.inspectorTitle}`
-            : 'Inspector',
-          buildInspectorLines(options.inspectorBody),
+          `drawer · ${options.drawer.tab}`,
+          buildSurfaceLines(options.drawer.body),
           width,
           1,
+          true,
+        ),
+      ]
+    : [];
+  const overlay = options.overlay?.kind
+    ? [
+        ...section(
+          `overlay · ${options.overlay.kind}`,
+          buildSurfaceLines(options.overlay.body),
+          width,
+          1,
+          true,
         ),
       ]
     : [];
@@ -679,11 +726,11 @@ export function buildTerminalPanel(options: {
   return renderFrame({
     width,
     statusLine: options.statusLine,
-    top,
+    top: [...top, ...overlay],
     left,
     right,
     bottom,
     footer:
-      'Keys: Shift+Up/Down focus agent | ESC interrupt | /focus <agent> | /logs raw events',
+      'Keys: Shift+Up/Down focus agent | ESC dismiss surface / interrupt | /focus <agent> | /logs raw events',
   });
 }

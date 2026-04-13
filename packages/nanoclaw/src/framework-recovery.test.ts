@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { classifyRuntimeRecovery } from './framework-recovery.js';
 
 describe('framework recovery', () => {
-  it('classifies edge runtime failures for heavy fallback', () => {
+  it('classifies edge runtime failures for explicit container retry', () => {
     expect(
       classifyRuntimeRecovery({
         error: 'Edge execution exceeded deadline of 100ms.',
@@ -11,7 +11,7 @@ describe('framework recovery', () => {
         fallbackEligible: true,
       }),
     ).toEqual({
-      kind: 'fallback',
+      kind: 'explicit_container_retry',
       reason: 'edge_timeout',
     });
 
@@ -22,12 +22,44 @@ describe('framework recovery', () => {
         fallbackEligible: true,
       }),
     ).toEqual({
-      kind: 'fallback',
+      kind: 'explicit_container_retry',
       reason: 'edge_runtime_unhealthy',
     });
   });
 
-  it('avoids fallback after visible output and marks commit conflicts for replan', () => {
+  it('returns none for guard branches that suppress explicit retry', () => {
+    expect(
+      classifyRuntimeRecovery({
+        error: 'Edge execution exceeded deadline of 100ms.',
+        workerClass: 'heavy',
+        fallbackEligible: true,
+      }),
+    ).toEqual({ kind: 'none' });
+
+    expect(
+      classifyRuntimeRecovery({
+        error: 'Edge execution exceeded deadline of 100ms.',
+        workerClass: 'edge',
+        fallbackEligible: false,
+      }),
+    ).toEqual({ kind: 'none' });
+
+    expect(
+      classifyRuntimeRecovery({
+        error: 'Edge execution cancelled before completion.',
+        workerClass: 'edge',
+        fallbackEligible: true,
+      }),
+    ).toEqual({ kind: 'none' });
+
+    expect(
+      classifyRuntimeRecovery({
+        error: '   ',
+        workerClass: 'edge',
+        fallbackEligible: true,
+      }),
+    ).toEqual({ kind: 'none' });
+
     expect(
       classifyRuntimeRecovery({
         error: 'Edge execution exceeded deadline of 100ms.',
@@ -36,10 +68,13 @@ describe('framework recovery', () => {
         visibleOutputEmitted: true,
       }),
     ).toEqual({ kind: 'none' });
+  });
 
+  it('keeps workspace conflicts on replan even when timeout text is present', () => {
     expect(
       classifyRuntimeRecovery({
-        error: 'Workspace version conflict: expected a, received b',
+        error:
+          'Workspace version conflict: expected a, received b after timeout waiting for edge execution.',
         workerClass: 'edge',
         fallbackEligible: true,
       }),

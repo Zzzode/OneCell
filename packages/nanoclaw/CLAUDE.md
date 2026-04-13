@@ -6,6 +6,18 @@ Package-local guidance for `@onecell/nanoclaw`. Use the root `CLAUDE.md` for mon
 
 `@onecell/nanoclaw` is the TypeScript assistant package inside the OneCell monorepo. It can execute through the native `@onecell/edgejs` runtime or through the container backend depending on config and deployment constraints.
 
+## Product interface model
+
+When discussing NanoClaw product surfaces, use this framing:
+
+- **Terminal mode** — Claude Code-style terminal interaction.
+- **Group/channel mode** — OpenClaw-style interaction inside messaging surfaces such as group email, WhatsApp, Telegram, Slack, Discord, or Gmail.
+
+Treat those as the two user-facing interface classes.
+
+Do **not** classify `@onecell/edgejs` as a UI; it is a runtime/backend for edge execution.
+Do **not** classify Claude Code skills as NanoClaw's normal product UI; they are setup/bootstrap/customization tooling.
+
 ## Key files
 
 | File | Purpose |
@@ -53,9 +65,27 @@ If you are validating edge execution mode, build `@onecell/edgejs` first so `bin
 
 ## Runtime model
 
-- `edge` backend: uses the built `@onecell/edgejs` binary and local workspace state.
+- `edge` backend: uses one edge runtime path (currently centered on `@onecell/edgejs`) and local workspace state.
 - `container` backend: uses the container runtime for heavier or isolation-sensitive execution.
-- `auto` mode chooses based on runtime policy and deployment constraints.
+- `auto` mode chooses between backends using policy routing.
+
+## Routing model
+
+Backend selection is not a single hardcoded switch. NanoClaw has policy-based dispatch that inspects execution requirements and places work on the appropriate backend.
+
+Current framing:
+
+- group config can pin a turn to `edge` or `container`
+- `auto` mode performs capability-based routing
+- script execution is treated as heavy and routes to `container`
+- unsupported edge tools/capabilities route to `container`
+- edge-compatible work can route to `edge`
+- edge runtime failures do not silently fall through to `container` after the turn starts
+- terminal mode exposes explicit `/retry-container` when an edge failure should be re-run on `container`
+- scheduled tasks fail explicitly and record container escalation availability instead of auto-falling back
+- some prompts can trigger team orchestration / fanout paths in addition to normal backend routing
+
+This is better described as capability inference plus policy routing plus explicit escalation, not a rich semantic intent-classification system.
 
 ## Integration with edgejs
 

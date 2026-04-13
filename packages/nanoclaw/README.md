@@ -66,6 +66,44 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - **Agent Swarms** — Spin up teams of specialized agents that collaborate on complex tasks.
 - **Optional integrations** — Add Gmail (`/add-gmail`) and more via skills.
 
+## Interface model
+
+NanoClaw has two user-facing interface modes:
+
+- **Terminal mode** — the traditional Claude Code-style experience. You interact with NanoClaw directly in the terminal.
+- **Group/channel mode** — the OpenClaw-style experience. You interact with NanoClaw inside external messaging surfaces such as group email, WhatsApp, Telegram, Slack, Discord, or Gmail.
+
+In this model, channels are not just transports; they are part of the product UI.
+
+Claude Code skills such as `/setup`, `/customize`, and `/add-telegram` are bootstrap tooling for setup, installation, and extension. They are not the day-to-day UI that users operate NanoClaw through.
+
+The `@onecell/edgejs` package is one runtime used by edge execution, not a user-facing interface.
+
+## Execution and routing model
+
+NanoClaw has multiple execution backends:
+
+- **edge backend** — lightweight execution through the edge runtime stack
+- **container backend** — heavier execution path for isolation-sensitive or tool-heavy work
+
+Config supports three execution modes:
+
+- `edge`
+- `container`
+- `auto`
+
+In `auto`, NanoClaw does capability-based routing rather than relying on a high-level semantic intent classifier. It inspects execution requirements such as scripts and requested tools/capabilities, then dispatches work to the appropriate backend.
+
+In practice, this means:
+
+- group config can pin execution to `edge` or `container`
+- script-driven work routes to the heavy/container path
+- unsupported or heavy-only capabilities route to the container path
+- edge-compatible work can stay on the edge path
+- edge runtime failures do not silently escalate to container after the turn has started
+- terminal mode surfaces an explicit `/retry-container` path when an edge run should be retried on container
+- scheduled tasks fail explicitly and record that container escalation is available instead of auto-retrying on container
+
 ## Usage
 
 Talk to your assistant with the trigger word (default: `@Andy`):
@@ -104,10 +142,10 @@ Or run `/customize` for guided changes.
 ## Architecture
 
 ```
-Channels --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
+Channels/UI --> SQLite --> Polling loop --> Policy routing --> Edge or Container backend --> Response
 ```
 
-Single Node.js process. Channels are added via skills and self-register at startup. Agents execute in isolated Linux containers with filesystem isolation. Per-group message queue with concurrency control. IPC via filesystem.
+Single Node.js process. Channels are added via skills and self-register at startup. The orchestrator maintains per-group state, infers required capabilities from incoming work, selects an execution backend up front, and surfaces explicit retry/escalation paths when an edge runtime fails. Per-group message queue with concurrency control. IPC via filesystem.
 
 Key files:
 
