@@ -1,3 +1,5 @@
+import React from 'react'
+import { render } from 'ink'
 import readline from 'readline';
 
 import {
@@ -25,7 +27,6 @@ import {
 } from '../db.js';
 import { buildFrameworkObservabilitySnapshot } from '../framework-observability.js';
 import {
-  buildTerminalPanel,
   type TerminalPanelTranscriptEntry,
 } from '../terminal-panel.js';
 import {
@@ -40,17 +41,16 @@ import {
 import { deleteScheduledTask } from '../task-control.js';
 import type { Channel } from '../types.js';
 import { formatDisplayDateTime } from '../timezone.js';
+import { TerminalApp } from '../terminal-app.js';
 import { registerChannel, type ChannelOpts } from './registry.js';
 
 const COLOR_DIM = '\x1b[90m';
 const COLOR_RESET = '\x1b[0m';
-const COLOR_ACCENT = '\x1b[38;5;111m';
 const COLOR_SUCCESS = '\x1b[38;5;114m';
 const COLOR_WARNING = '\x1b[38;5;179m';
 const TERMINAL_EVENT_LIMIT = 50;
 const TERMINAL_TRANSCRIPT_LIMIT = 80;
 const DEFAULT_LOG_TAIL = 12;
-const CLEAR_SCREEN = '\x1b[2J\x1b[H';
 
 type TerminalExecutionHealth = 'healthy' | 'missing' | 'stale' | 'terminal';
 type TerminalGraphHealth = 'healthy' | 'stale' | 'terminal' | 'idle';
@@ -87,10 +87,6 @@ let terminalTranscript: TerminalPanelTranscriptEntry[] = [];
 
 function terminalEventTail(limit: number): string[] {
   return terminalEvents.slice(-limit).map((entry) => entry.text);
-}
-
-function terminalReplyTail(limit: number): string[] {
-  return terminalReplies.slice(-limit).map((entry) => entry.text);
 }
 
 function terminalTranscriptTail(limit: number): TerminalPanelTranscriptEntry[] {
@@ -561,7 +557,7 @@ class TerminalChannel implements Channel {
   private rl: readline.Interface | null = null;
   private lastAssistantMessageByJid = new Map<string, string>();
   private typingByJid = new Set<string>();
-  private lastScreenSignature: string | null = null;
+  private inkInstance: ReturnType<typeof render> | null = null;
   private latestSystemEvent: string | null = null;
   private latestAssistantMessage: string | null = null;
   private sidePanel: {
@@ -848,36 +844,27 @@ class TerminalChannel implements Channel {
     );
   }
 
-  private buildScreenText(): string {
+  private renderScreen(_force = false): void {
     const busy = this.typingByJid.has(TERMINAL_GROUP_JID);
-    const inputPrompt = busy ? '… ' : 'you> ';
-    const panel = buildTerminalPanel({
-      statusLine: buildTerminalStatusLine(),
+    const props = {
+      backend: TERMINAL_GROUP_EXECUTION_MODE,
       busy,
       latestSystemEvent: this.latestSystemEvent,
       latestAssistantMessage: this.latestAssistantMessage,
       recentSystemEvents: terminalEventTail(4),
-      recentReplies: terminalReplyTail(4),
       recentTranscript: terminalTranscriptTail(12),
       sidePanel: this.sidePanel,
       drawer: this.drawer,
       overlay: this.overlay,
-    });
-    return `${panel}\n${inputPrompt}`;
-  }
+    };
 
-  private renderScreen(force = false): void {
-    if (!this.rl) return;
-    const screen = this.buildScreenText();
-    if (!force && this.lastScreenSignature === screen) {
-      return;
+    if (this.inkInstance) {
+      this.inkInstance.rerender(<TerminalApp {...props} />);
+    } else {
+      this.inkInstance = render(<TerminalApp {...props} />, {
+        exitOnCtrlC: false,
+      });
     }
-    this.lastScreenSignature = screen;
-    this.rl.pause();
-    process.stdout.write(`${CLEAR_SCREEN}${screen}`);
-    this.rl.setPrompt('');
-    this.rl.resume();
-    this.rl.prompt(true);
   }
 
   private openSidePanel(tab: TerminalSidePanelTab, body: string): void {
@@ -989,10 +976,13 @@ class TerminalChannel implements Channel {
   }
 
   async disconnect(): Promise<void> {
+    if (this.inkInstance) {
+      this.inkInstance.unmount()
+      this.inkInstance = null
+    }
     this.connected = false;
     this.lastAssistantMessageByJid.clear();
     this.typingByJid.clear();
-    this.lastScreenSignature = null;
     this.latestSystemEvent = null;
     this.latestAssistantMessage = null;
     this.sidePanel = { isOpen: false, tab: 'turn', body: null };
