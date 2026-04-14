@@ -57,14 +57,17 @@ interface TerminalAppProps {
   width?: number
   height?: number
   onSubmit?: (text: string) => void
+  verbose?: boolean
   onEscape?: () => void
   onShiftUp?: () => void
   onShiftDown?: () => void
+  onCtrlO?: () => void
 }
 
 export function TerminalApp({
   backend,
   busy,
+  verbose,
   recentTranscript = [],
   sidePanel,
   drawer,
@@ -74,6 +77,7 @@ export function TerminalApp({
   onEscape,
   onShiftUp,
   onShiftDown,
+  onCtrlO,
 }: TerminalAppProps) {
   const [inputValue, setInputValue] = useState('')
 
@@ -94,14 +98,7 @@ export function TerminalApp({
       />
       <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
 
-      <Transcript entries={recentTranscript} width={width} />
-
-      {busy && (
-        <Box marginLeft={2} gap={1}>
-          <Spinner />
-          <Text color={theme.inactive}>thinking...</Text>
-        </Box>
-      )}
+      <Transcript entries={recentTranscript} width={width} verbose={verbose} />
 
       {sidePanel?.isOpen && sidePanel.body && (
         <Box flexDirection="column" marginTop={1}>
@@ -131,17 +128,32 @@ export function TerminalApp({
         </Box>
       )}
 
-      <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
-      <TextInput
-        value={inputValue}
-        onChange={setInputValue}
-        onSubmit={handleSubmit}
-        onEscape={onEscape ?? (() => {})}
-        onShiftUp={onShiftUp}
-        onShiftDown={onShiftDown}
-        busy={busy}
-        placeholder={busy ? 'processing...' : 'Type your message...'}
-      />
+      <Box
+        flexDirection="column"
+        marginTop={1}
+        borderColor={theme.border}
+        borderStyle="round"
+        paddingX={1}
+      >
+        <TextInput
+          value={inputValue}
+          onChange={setInputValue}
+          onSubmit={handleSubmit}
+          onEscape={onEscape ?? (() => {})}
+          onShiftUp={onShiftUp}
+          onShiftDown={onShiftDown}
+          onCtrlO={onCtrlO}
+          busy={busy}
+          placeholder={busy ? 'processing...' : 'Type your message...'}
+        />
+      </Box>
+
+      {busy && (
+        <Box marginLeft={2} gap={1}>
+          <Spinner />
+          <Text color={theme.inactive}>thinking...</Text>
+        </Box>
+      )}
     </Box>
   )
 }

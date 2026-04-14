@@ -586,6 +586,7 @@ class TerminalChannel implements Channel {
     kind: TerminalOverlayKind | null;
     body: string | null;
   } = { kind: null, body: null };
+  private verbose = false;
 
   constructor(private readonly opts: ChannelOpts) {}
 
@@ -826,6 +827,7 @@ class TerminalChannel implements Channel {
     const props = {
       backend: TERMINAL_GROUP_EXECUTION_MODE,
       busy,
+      verbose: this.verbose,
       width,
       latestSystemEvent: this.latestSystemEvent,
       latestAssistantMessage: this.latestAssistantMessage,
@@ -838,6 +840,7 @@ class TerminalChannel implements Channel {
       onEscape: () => { void this.handleInterrupt() },
       onShiftUp: () => { this.handleFocusCycle(-1) },
       onShiftDown: () => { this.handleFocusCycle(1) },
+      onCtrlO: () => { this.verbose = !this.verbose; this.renderScreen(true); },
     };
 
     if (this.inkInstance) {
