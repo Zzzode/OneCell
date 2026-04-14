@@ -73,6 +73,7 @@ vi.mock('../config.js', () => ({
 }));
 
 vi.mock('../db.js', () => ({
+  clearConversationMessages: vi.fn(),
   getAllTasks: vi.fn(),
   getTaskById: vi.fn(),
   listExecutionStatesForTaskNode: vi.fn(),
@@ -144,6 +145,7 @@ import {
   buildTerminalStatusSummary,
   buildTerminalTasksSummary,
   emitTerminalSystemEvent,
+  emitTerminalToolEvent,
   executeTerminalTaskCommand,
   resetTerminalEventLogForTests,
 } from './terminal.js';
@@ -1422,7 +1424,7 @@ describe('terminal ui helpers', () => {
     await channel!.disconnect();
   });
 
-  it('does not trigger onCancel when ESC is pressed while idle', async () => {
+  it('triggers onCancel on ESC even when idle (interrupts pending retry)', async () => {
     vi.mocked(listExecutionStates).mockReturnValue([]);
     vi.mocked(listTaskGraphs).mockReturnValue([]);
 
@@ -1441,7 +1443,7 @@ describe('terminal ui helpers', () => {
     pressEscape();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(onCancel).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledWith('terminal_canary');
     await channel!.disconnect();
   });
 
@@ -1467,5 +1469,57 @@ describe('terminal ui helpers', () => {
 
     expect(onCancel).not.toHaveBeenCalled();
     await channel!.disconnect();
+  });
+
+  it('toggles verbose mode via ctrl+o and re-renders transcript', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      // Simulate a tool event
+      emitTerminalToolEvent('term:canary-group', 'workspace.read(src/config.ts)', {
+        tool: 'workspace.read',
+        args: { path: 'src/config.ts' },
+        status: 'success',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Before toggle: should show collapsed summary
+      const beforeFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
+      expect(beforeFrame).toContain('ctrl+o to expand');
+
+      // Press ctrl+o
+      const props = inkHarness.getLastProps();
+      const onCtrlO = props.onCtrlO as (() => void) | undefined;
+      expect(onCtrlO).toBeTypeOf('function');
+      onCtrlO!();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // After toggle: should show verbose details
+      const afterFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
+        /\x1b\[[0-9;]*m/g,
+        '',
+      );
+      expect(afterFrame).toContain('src/config.ts');
+      expect(afterFrame).not.toContain('ctrl+o to expand');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 });
