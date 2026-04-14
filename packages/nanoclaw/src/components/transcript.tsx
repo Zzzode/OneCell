@@ -136,7 +136,7 @@ function formatResultSummary(result: unknown, maxLen: number): string {
   try {
     const str = JSON.stringify(result);
     return str.length > maxLen ? str.slice(0, maxLen - 1) + '\u2026' : str;
-  } catch {
+  } catch (_err: unknown) {
     return '';
   }
 }
