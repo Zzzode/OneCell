@@ -34,6 +34,8 @@
     "build": "pnpm -r --stream run build",
     "build:edgejs": "pnpm --filter @onecell/edgejs run build",
     "build:nanoclaw": "pnpm --filter @onecell/nanoclaw run build",
+    "start": "pnpm --filter @onecell/nanoclaw run start",
+    "dev": "pnpm --filter @onecell/nanoclaw run dev",
     "test": "pnpm -r --stream run test",
     "lint": "pnpm -r --stream run lint",
     "format:check": "pnpm -r --stream run format:check",

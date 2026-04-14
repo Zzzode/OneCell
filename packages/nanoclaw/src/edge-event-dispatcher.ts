@@ -92,7 +92,10 @@ export function createPersistentExecutionEventHooks(
     planKind: request.planFragment?.kind,
   });
   const roleTitle = request.planFragment?.fanoutRole ?? null;
-  const pendingToolCalls = new Map<string, import('./terminal-panel.js').TerminalPanelTranscriptEntry>();
+  const pendingToolCalls = new Map<
+    string,
+    import('./terminal-panel.js').TerminalPanelTranscriptEntry
+  >();
 
   return {
     onAck(event) {
@@ -146,8 +149,7 @@ export function createPersistentExecutionEventHooks(
           : {};
       const detail = summarizeToolArgs(event.tool, args);
       const label = detail ? `${event.tool}(${detail})` : event.tool;
-      const { emitTerminalToolEvent } =
-        await import('./channels/terminal.js');
+      const { emitTerminalToolEvent } = await import('./channels/terminal.js');
       const entry = emitTerminalToolEvent(request.chatJid, label, {
         tool: event.tool,
         args,
@@ -160,14 +162,16 @@ export function createPersistentExecutionEventHooks(
     async onToolResult(event) {
       const entry = pendingToolCalls.get(event.executionId);
       if (entry?.toolData) {
-        const isError = typeof event.result === 'object' && event.result !== null
-          && 'ok' in (event.result as Record<string, unknown>)
-          && (event.result as Record<string, unknown>).ok === false;
+        const isError =
+          typeof event.result === 'object' &&
+          event.result !== null &&
+          (('ok' in (event.result as Record<string, unknown>) &&
+            (event.result as Record<string, unknown>).ok === false) ||
+            'error' in (event.result as Record<string, unknown>));
         entry.toolData.result = event.result;
         entry.toolData.status = isError ? 'error' : 'success';
         pendingToolCalls.delete(event.executionId);
-        const { emitTerminalRefresh } =
-          await import('./channels/terminal.js');
+        const { emitTerminalRefresh } = await import('./channels/terminal.js');
         emitTerminalRefresh(request.chatJid);
       }
     },

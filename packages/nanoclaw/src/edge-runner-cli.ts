@@ -98,28 +98,32 @@ class StdIoEdgeHostBridge {
     }
     this.pending.delete(message.id);
 
+    if (message.type === 'host_http_result') {
+      // HTTP results always resolve — even non-ok responses carry status/body
+      // that the runner needs to construct a meaningful error message.
+      // Rejecting here would crash the subprocess on any HTTP error.
+      pending.resolve({
+        status: message.status ?? 0,
+        ok: message.ok,
+        url: message.url ?? '',
+        body: message.body ?? '',
+      });
+      return true;
+    }
+
+    // host_tool_result: reject on failure
     if (!message.ok) {
       pending.reject(new Error(message.error || 'Host tool execution failed.'));
       return true;
     }
 
-    if (message.type === 'host_tool_result') {
-      pending.resolve({
-        result: message.result ?? null,
-        outputText:
-          typeof message.outputText === 'string' ? message.outputText : null,
-        workspaceOverlayDigest: message.workspaceOverlayDigest,
-        workspaceOverlay: message.workspaceOverlay,
-      } satisfies EdgeHostToolExecutionResult);
-      return true;
-    }
-
     pending.resolve({
-      status: message.status ?? 0,
-      ok: message.ok,
-      url: message.url ?? '',
-      body: message.body ?? '',
-    });
+      result: message.result ?? null,
+      outputText:
+        typeof message.outputText === 'string' ? message.outputText : null,
+      workspaceOverlayDigest: message.workspaceOverlayDigest,
+      workspaceOverlay: message.workspaceOverlay,
+    } satisfies EdgeHostToolExecutionResult);
     return true;
   }
 

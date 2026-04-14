@@ -209,6 +209,12 @@ export interface ExecutionEventHooks {
   onProgress?(
     event: Extract<ExecutionEvent, { type: 'progress' }>,
   ): Promise<void> | void;
+  onToolCall?(
+    event: Extract<ExecutionEvent, { type: 'tool_call' }>,
+  ): Promise<void> | void;
+  onToolResult?(
+    event: Extract<ExecutionEvent, { type: 'tool_result' }>,
+  ): Promise<void> | void;
   onWarning?(
     event: Extract<ExecutionEvent, { type: 'warning' }>,
   ): Promise<void> | void;

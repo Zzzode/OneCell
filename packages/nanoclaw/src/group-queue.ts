@@ -35,6 +35,7 @@ interface LaneState {
   containerName: string | null;
   groupFolder: string | null;
   retryCount: number;
+  cancelled: boolean;
 }
 
 interface GroupState {
@@ -69,6 +70,7 @@ export class GroupQueue {
           containerName: null,
           groupFolder: null,
           retryCount: 0,
+          cancelled: false,
         },
         background: {
           active: false,
@@ -81,6 +83,7 @@ export class GroupQueue {
           containerName: null,
           groupFolder: null,
           retryCount: 0,
+          cancelled: false,
         },
       };
       this.groups.set(groupJid, state);
@@ -281,6 +284,7 @@ export class GroupQueue {
       this.closeStdin(groupJid, 'foreground');
       state.foreground.idleWaiting = false;
       state.foreground.retryScheduled = false;
+      state.foreground.cancelled = true;
       if (state.foreground.retryTimer) {
         clearTimeout(state.foreground.retryTimer);
         state.foreground.retryTimer = null;
@@ -329,15 +333,18 @@ export class GroupQueue {
         const success = await this.processMessagesFn(groupJid);
         if (success) {
           state.retryCount = 0;
-        } else {
+        } else if (!state.cancelled) {
           this.scheduleRetry(groupJid, this.getGroup(groupJid));
         }
       }
     } catch (err) {
       logger.error({ groupJid, err }, 'Error processing messages for group');
-      this.scheduleRetry(groupJid, this.getGroup(groupJid));
+      if (!state.cancelled) {
+        this.scheduleRetry(groupJid, this.getGroup(groupJid));
+      }
     } finally {
       state.active = false;
+      state.cancelled = false;
       state.process = null;
       state.containerName = null;
       state.groupFolder = null;

@@ -179,10 +179,10 @@ describe('loadConfigFromArgv', () => {
   });
 
   it('loads config from default path when --config is not present', () => {
-    // Write a config to the default path (cwd/nanoclaw.config.json)
-    const defaultPath = path.join(process.cwd(), 'nanoclaw.config.json');
+    const origCwd = process.cwd();
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-cfgtest-'));
     fs.writeFileSync(
-      defaultPath,
+      path.join(tmpDir, 'nanoclaw.config.json'),
       JSON.stringify({
         providers: {
           anthropic: { type: 'anthropic', apiKey: 'sk-default-test' },
@@ -190,15 +190,15 @@ describe('loadConfigFromArgv', () => {
       }),
       'utf-8',
     );
-    tempFiles.push(defaultPath);
 
     try {
+      process.chdir(tmpDir);
       const resolved = loadConfigFromArgv([]);
       expect(resolved.edgeProvider.apiKey).toBe('sk-default-test');
     } finally {
-      // Cleanup default config
+      process.chdir(origCwd);
       try {
-        fs.unlinkSync(defaultPath);
+        fs.rmSync(tmpDir, { recursive: true });
       } catch {
         // ignore
       }

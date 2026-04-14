@@ -1488,11 +1488,15 @@ describe('terminal ui helpers', () => {
       await channel!.connect();
 
       // Simulate a tool event
-      emitTerminalToolEvent('term:canary-group', 'workspace.read(src/config.ts)', {
-        tool: 'workspace.read',
-        args: { path: 'src/config.ts' },
-        status: 'success',
-      });
+      emitTerminalToolEvent(
+        'term:canary-group',
+        'workspace.read(src/config.ts)',
+        {
+          tool: 'workspace.read',
+          args: { path: 'src/config.ts' },
+          status: 'success',
+        },
+      );
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Before toggle: should show collapsed summary

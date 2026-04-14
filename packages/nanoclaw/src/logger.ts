@@ -16,11 +16,9 @@ const FULL_RESET = '\x1b[0m';
 const envLevel =
   (process.env.LOG_LEVEL as Level | undefined) ||
   (process.env.TERMINAL_CHANNEL === 'true' ? 'silent' : 'info');
-const SILENT = 100;
+const SILENT = LEVELS.error;
 const envThreshold =
-  envLevel === 'silent'
-    ? SILENT
-    : (LEVELS[envLevel] ?? LEVELS.info);
+  envLevel === 'silent' ? SILENT : (LEVELS[envLevel] ?? LEVELS.info);
 
 // Runtime silence flag — set by the terminal channel when Ink is managing
 // the screen.  Any write to stdout/stderr between Ink frames corrupts
@@ -65,7 +63,7 @@ function log(
   msg?: string,
 ): void {
   if (LEVELS[level] < envThreshold) return;
-  if (silenced && level !== 'fatal') return;
+  if (silenced && level !== 'fatal' && level !== 'error') return;
   const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
   const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
   if (typeof dataOrMsg === 'string') {

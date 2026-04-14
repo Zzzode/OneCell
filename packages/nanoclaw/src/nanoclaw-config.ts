@@ -17,6 +17,7 @@ export interface NanoclawConfigFile {
     provider?: string;
     enableTools?: boolean;
     disableFallback?: boolean;
+    safe?: boolean;
   };
   container?: {
     provider?: string;
@@ -42,6 +43,7 @@ export interface ResolvedNanoclawConfig {
   edge: {
     enableTools: boolean;
     disableFallback: boolean;
+    safe: boolean;
   };
   container: {
     maxConcurrent: number;
@@ -150,6 +152,7 @@ export function resolveConfig(
     edge: {
       enableTools: config.edge?.enableTools ?? true,
       disableFallback: config.edge?.disableFallback ?? false,
+      safe: config.edge?.safe ?? false,
     },
     container: {
       maxConcurrent: config.container?.maxConcurrent ?? 5,

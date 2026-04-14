@@ -1,12 +1,13 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import readline from 'readline';
 
 import type { ExecutionEvent, ExecutionRequest } from './agent-backend.js';
-import { EDGEJS_BIN, EDGE_RUNNER_MODE } from './config.js';
+import { EDGEJS_BIN, EDGE_RUNNER_MODE, EDGE_SAFE } from './config.js';
 import type { EdgeRunnerProtocolMessage } from './edge-host-bridge.js';
 import type { EdgeRunner } from './edge-runner.js';
 import { executeEdgeTool } from './edge-tool-host.js';
@@ -44,6 +45,100 @@ function resolveEdgeJsBin(): string | null {
   return null;
 }
 
+/**
+ * Resolve a path to a wasmer/edgejs WASM package for --safe mode.
+ *
+ * Lookup order:
+ * 1. Local wasix build output (build-wasix/edgejs.wasm) — always preferred
+ *    for local development since it matches the current source.
+ * 2. Wasmer query cache — matches the binary's embedded version pin against
+ *    cached packages downloaded by the wasmer CLI.
+ *
+ * Returns null if no package is found.
+ * Throws if a package is found but is invalid (e.g. not a file).
+ */
+function resolveSafePackagePath(): string | null {
+  // Check local wasix build output first.
+  const localWasm = path.join(
+    resolveNanoclawRoot(),
+    '..',
+    '..',
+    'build-wasix',
+    'edgejs.wasm',
+  );
+  if (fs.existsSync(localWasm)) {
+    return localWasm;
+  }
+
+  return resolveWasmerCachePath();
+}
+
+/**
+ * Check whether a cached wasmer/edgejs package exists in the wasmer query
+ * cache.  The binary embeds an exact version pin
+ * (e.g. "wasmer/edgejs@=0.0.0-d466065") and looks it up inside the
+ * wasmer query cache to find the corresponding .bin hash.
+ */
+function resolveWasmerCachePath(): string | null {
+  const homeDir = process.env.HOME || os.homedir();
+  const checkoutsDir = path.join(homeDir, '.wasmer', 'cache', 'checkouts');
+  const queryDir = path.join(
+    homeDir,
+    '.wasmer',
+    'cache',
+    'queries',
+    'https___wasmer.io_graphql',
+  );
+
+  // Read the edge binary to extract the embedded version string.
+  // The binary contains: wasmer/edgejs@=0.0.0-<commit>
+  const edgeBin = resolveEdgeJsBin();
+  if (!edgeBin) return null;
+
+  let versionMatch: string | null = null;
+  try {
+    const buf = fs.readFileSync(edgeBin);
+    // Search for the ASCII pattern "wasmer/edgejs@=0.0.0-"
+    const needle = Buffer.from('wasmer/edgejs@=0.0.0-');
+    for (let i = 0; i <= buf.length - needle.length; i++) {
+      if (buf.compare(needle, 0, needle.length, i, i + needle.length) === 0) {
+        // Read until null terminator or non-printable char
+        let end = i + needle.length;
+        while (end < buf.length && buf[end]! >= 0x20 && buf[end]! < 0x7f) {
+          end++;
+        }
+        const full = buf.toString('ascii', i, end);
+        const eqIdx = full.indexOf('=');
+        versionMatch = full.slice(eqIdx + 1); // "0.0.0-<commit>"
+        break;
+      }
+    }
+  } catch {
+    return null;
+  }
+  if (!versionMatch) return null;
+
+  // Look up the version in the wasmer query cache to find the hash
+  const queryFile = path.join(queryDir, 'wasmer#edgejs');
+  try {
+    const queryData = JSON.parse(fs.readFileSync(queryFile, 'utf-8'));
+    const versions: Array<{
+      version: string;
+      v3?: { piritaSha256Hash?: string | null };
+    }> = queryData?.response?.data?.getPackage?.versions ?? [];
+    for (const v of versions) {
+      if (v.version === versionMatch && v.v3?.piritaSha256Hash) {
+        const cached = path.join(checkoutsDir, `${v.v3.piritaSha256Hash}.bin`);
+        if (fs.existsSync(cached)) return cached;
+      }
+    }
+  } catch {
+    // query cache missing or corrupt
+  }
+
+  return null;
+}
+
 export function resolveRunnerCommand(): RunnerCommand {
   const nanoclawRoot = resolveNanoclawRoot();
   const distEntry = path.join(nanoclawRoot, 'dist', 'edge-runner-cli.js');
@@ -59,9 +154,27 @@ export function resolveRunnerCommand(): RunnerCommand {
         'EDGE_RUNNER_MODE=edgejs requires a built dist/edge-runner-cli.js. Run npm run build first.',
       );
     }
+    let args: string[];
+    if (EDGE_SAFE) {
+      const safePackage = resolveSafePackagePath();
+      if (!safePackage) {
+        throw new Error(
+          'edge.safe is enabled but no WASM package found. ' +
+            'Build the wasix artifact with: bash wasix/build-wasix.sh',
+        );
+      }
+      args = [
+        '--safe',
+        '--wasmer-package',
+        safePackage,
+        'dist/edge-runner-cli.js',
+      ];
+    } else {
+      args = ['dist/edge-runner-cli.js'];
+    }
     return {
       command: edgeBin,
-      args: ['--safe', 'dist/edge-runner-cli.js'],
+      args,
       cwd: nanoclawRoot,
     };
   }

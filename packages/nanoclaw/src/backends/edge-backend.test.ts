@@ -622,7 +622,8 @@ describe('edgeBackend', () => {
       await expect(runPromise).resolves.toEqual({
         status: 'error',
         result: null,
-        error: 'Edge execution exceeded deadline of 100ms.',
+        error:
+          'Edge execution exceeded deadline of 0s: still active after 0s (last event 0s ago).',
       });
     } finally {
       vi.useRealTimers();

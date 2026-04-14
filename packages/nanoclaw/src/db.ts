@@ -1161,6 +1161,13 @@ export function getRecentConversationMessages(
   }));
 }
 
+export function clearConversationMessages(chatJid: string): number {
+  const result = db
+    .prepare('DELETE FROM messages WHERE chat_jid = ?')
+    .run(chatJid);
+  return result.changes;
+}
+
 export function getLastBotMessageTimestamp(
   chatJid: string,
   botPrefix: string,

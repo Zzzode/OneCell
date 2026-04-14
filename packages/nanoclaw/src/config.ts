@@ -20,6 +20,7 @@ export function initConfig(configPath: string): ResolvedNanoclawConfig {
   EDGE_RUNNER_MODE = _appConfig.edgeRunnerMode;
   EDGE_ENABLE_TOOLS = _appConfig.edge.enableTools;
   EDGE_DISABLE_FALLBACK = _appConfig.edge.disableFallback;
+  EDGE_SAFE = _appConfig.edge.safe;
   TERMINAL_CHANNEL_ENABLED = _appConfig.profile === 'terminal';
   TERMINAL_GROUP_EXECUTION_MODE = _appConfig.executionMode;
 
@@ -171,6 +172,7 @@ export let DEFAULT_EXECUTION_MODE: 'edge' | 'container' | 'auto' = 'edge';
 export let EDGE_RUNNER_MODE: string = 'edgejs';
 export let EDGE_ENABLE_TOOLS: boolean = true;
 export let EDGE_DISABLE_FALLBACK: boolean = false;
+export let EDGE_SAFE: boolean = false;
 export let TERMINAL_CHANNEL_ENABLED: boolean = true;
 export let TERMINAL_GROUP_EXECUTION_MODE: 'edge' | 'container' | 'auto' =
   'edge';
