@@ -304,6 +304,28 @@ function synthesizeProviderSessionId(request: ExecutionRequest): string {
   return `edge-session:${request.logicalSessionId}`;
 }
 
+function buildJsExecDescription(request: ExecutionRequest): string {
+  const allowed = request.policy.execution?.allowedModuleImports ?? [];
+  const moduleNote =
+    allowed.length > 0
+      ? `Available modules via sdk.import(): ${allowed.map((m) => `'${m}'`).join(', ')}.`
+      : 'No external modules are available.';
+  return [
+    'Execute a JavaScript snippet inside the edge runtime.',
+    'The code is the body of an async function and must return a serializable value.',
+    'You MUST use the injected sdk object for all side effects.',
+    'Available sdk methods:',
+    '- sdk.workspace.read({path}), sdk.workspace.list({path}), sdk.workspace.search({path,pattern})',
+    '- sdk.workspace.write({path,content}), sdk.workspace.applyPatch({patch})',
+    '- sdk.http.fetch({url,method,headers,body})',
+    '- sdk.message.send({text,chatJid})',
+    '- sdk.task.create({prompt,scheduleType,scheduleValue}), sdk.task.list()',
+    `- sdk.import(moduleName) — import a whitelisted module. ${moduleNote}`,
+    'Do NOT use bare import() or require(). They will fail. Use sdk.import() instead.',
+    'Example: const file = await sdk.workspace.read({ path: "CLAUDE.md" }); return file.content.split(/\\r?\\n/)[0];',
+  ].join('\n');
+}
+
 function buildToolDefinitions(
   request: ExecutionRequest,
 ): Array<Record<string, unknown>> {
@@ -469,8 +491,7 @@ function buildToolDefinitions(
     },
     'js.exec': {
       name: 'js.exec',
-      description:
-        'Execute a JavaScript snippet inside the edge runtime using the injected sdk. Use this when the user explicitly asks to run JavaScript or to use sdk.*. The code is the body of an async function and must return a serializable value. Example: const file = await sdk.workspace.read({ path: "CLAUDE.md" }); return file.content.split(/\\r?\\n/)[0];',
+      description: buildJsExecDescription(request),
       input_schema: {
         type: 'object',
         properties: {
@@ -857,7 +878,9 @@ class AnthropicEdgeRunner implements EdgeRunner {
     const providerSessionId = synthesizeProviderSessionId(request);
     let workspaceOverlay: WorkspaceOverlay | undefined;
     const messages = buildAnthropicMessages(request);
-    const tools = buildToolDefinitions(request);
+    const allTools = buildToolDefinitions(request);
+    let activeTools = allTools;
+    let toolsFallbackAttempted = false;
     let toolCalls = 0;
 
     yield {
@@ -912,35 +935,45 @@ class AnthropicEdgeRunner implements EdgeRunner {
       const baseUrl = (
         request.runner?.apiBaseUrl || 'https://api.anthropic.com'
       ).replace(/\/+$/, '');
+      const requestPayload = {
+        model: request.runner?.model || 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: buildAnthropicSystemPrompt(request),
+        messages,
+        ...(activeTools.length > 0 ? { tools: activeTools } : {}),
+      };
       const response = yield* withHeartbeatWhilePending({
         executionId: request.executionId,
         signal,
         run: () =>
-          fetch(`${baseUrl}/v1/messages`, {
+          edgeFetchText(`${baseUrl}/v1/messages`, {
             method: 'POST',
             headers: {
               'content-type': 'application/json',
               'anthropic-version': '2023-06-01',
               'x-api-key': apiKey,
             },
-            body: JSON.stringify({
-              model: request.runner?.model || 'claude-sonnet-4-20250514',
-              max_tokens: 1024,
-              system: buildAnthropicSystemPrompt(request),
-              messages,
-              ...(tools.length > 0 ? { tools } : {}),
-            }),
+            body: JSON.stringify(requestPayload),
             signal,
           }),
       });
 
       if (!response.ok) {
         const body = await response.text();
-        const message =
-          `Anthropic edge request failed: ${response.status} ${body}`.slice(
-            0,
-            1000,
-          );
+        // Fallback: if 400 and tools were included, retry without tools
+        if (
+          response.status === 400 &&
+          activeTools.length > 0 &&
+          !toolsFallbackAttempted
+        ) {
+          toolsFallbackAttempted = true;
+          activeTools = [];
+          continue;
+        }
+        const msgRoles = messages.map((m) => m.role).join(',');
+        const debugLine = `model=${requestPayload.model} msgs=${messages.length}(${msgRoles}) tools=${activeTools.length} syslen=${requestPayload.system.length}`;
+        const apiHint = body.slice(0, 120);
+        const message = `Anthropic ${response.status} | ${debugLine} | ${apiHint}`;
         yield {
           type: 'error',
           executionId: request.executionId,
@@ -959,7 +992,7 @@ class AnthropicEdgeRunner implements EdgeRunner {
         };
       }
 
-      const data = (await response.json()) as AnthropicResponse;
+      const data = JSON.parse(await response.text()) as AnthropicResponse;
       const assistantText = data.content
         .filter(
           (block) => block.type === 'text' && typeof block.text === 'string',

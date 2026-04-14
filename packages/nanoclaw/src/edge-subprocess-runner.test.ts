@@ -86,6 +86,11 @@ describe('EdgeSubprocessRunner', () => {
     const fakeEdgeBin = path.join(tempRoot, 'edge');
     fs.writeFileSync(fakeEdgeBin, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
 
+    // Create a fake wasm package so resolveSafePackagePath finds it.
+    const fakeWasmDir = path.join(tempRoot, 'build-wasix');
+    fs.mkdirSync(fakeWasmDir, { recursive: true });
+    fs.writeFileSync(path.join(fakeWasmDir, 'edgejs.wasm'), 'fake');
+
     const distEntry = fileURLToPath(
       new URL('../dist/edge-runner-cli.js', import.meta.url),
     );
@@ -102,14 +107,87 @@ describe('EdgeSubprocessRunner', () => {
       vi.stubEnv('EDGE_RUNNER_MODE', 'edgejs');
       vi.stubEnv('EDGEJS_BIN', fakeEdgeBin);
       vi.resetModules();
-      initTestConfig();
+
+      // Write a config with edge.safe = true
+      const { initConfig: freshInitConfig } = await import('./config.js');
+      const { writeTestConfigFile } = await import('./test-config.js');
+      freshInitConfig(
+        writeTestConfigFile({
+          edgeRunnerMode: 'edgejs',
+          edge: {
+            provider: 'testlocal',
+            enableTools: true,
+            disableFallback: false,
+            safe: true,
+          },
+        }),
+      );
+
+      // resolveSafePackagePath checks build-wasix relative to nanoclaw root,
+      // which resolves to packages/nanoclaw/../../build-wasix = build-wasix at
+      // monorepo root. Stub the path resolution by ensuring the fake wasm is
+      // found at the expected location relative to the dist entry.
+      const monorepoRoot = path.resolve(path.dirname(distEntry), '..', '..');
+      const wasmAtRoot = path.join(monorepoRoot, 'build-wasix', 'edgejs.wasm');
+      const hadWasmAtRoot = fs.existsSync(wasmAtRoot);
+      if (!hadWasmAtRoot) {
+        fs.mkdirSync(path.dirname(wasmAtRoot), { recursive: true });
+        fs.writeFileSync(wasmAtRoot, 'fake');
+      }
 
       const { resolveRunnerCommand } =
         await import('./edge-subprocess-runner.js');
       expect(resolveRunnerCommand()).toMatchObject({
         command: fakeEdgeBin,
-        args: ['--safe', 'dist/edge-runner-cli.js'],
+        args: expect.arrayContaining([
+          '--safe',
+          '--wasmer-package',
+          'dist/edge-runner-cli.js',
+        ]),
       });
+
+      if (!hadWasmAtRoot) {
+        fs.rmSync(wasmAtRoot, { force: true });
+      }
+    } finally {
+      if (hadDistEntry && originalDist != null) {
+        fs.writeFileSync(distEntry, originalDist);
+      } else {
+        fs.rmSync(distEntry, { force: true });
+      }
+    }
+  });
+
+  it('resolves a plain edgejs command when safe is not configured', async () => {
+    const fakeEdgeBin = path.join(tempRoot, 'edge');
+    fs.writeFileSync(fakeEdgeBin, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+
+    const distEntry = fileURLToPath(
+      new URL('../dist/edge-runner-cli.js', import.meta.url),
+    );
+    fs.mkdirSync(path.dirname(distEntry), { recursive: true });
+    const hadDistEntry = fs.existsSync(distEntry);
+    const originalDist = hadDistEntry
+      ? fs.readFileSync(distEntry, 'utf8')
+      : null;
+    if (!hadDistEntry) {
+      fs.writeFileSync(distEntry, '// test placeholder\n');
+    }
+
+    try {
+      vi.stubEnv('EDGE_RUNNER_MODE', 'edgejs');
+      vi.stubEnv('EDGEJS_BIN', fakeEdgeBin);
+      vi.resetModules();
+      initTestConfig(); // safe defaults to false
+
+      const { resolveRunnerCommand } =
+        await import('./edge-subprocess-runner.js');
+      const cmd = resolveRunnerCommand();
+      expect(cmd).toMatchObject({
+        command: fakeEdgeBin,
+        args: ['dist/edge-runner-cli.js'],
+      });
+      expect(cmd.args).not.toContain('--safe');
     } finally {
       if (hadDistEntry && originalDist != null) {
         fs.writeFileSync(distEntry, originalDist);

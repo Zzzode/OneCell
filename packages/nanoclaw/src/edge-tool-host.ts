@@ -2,8 +2,6 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
-import { CronExpressionParser } from 'cron-parser';
-
 import type {
   ExecutionRequest,
   WorkspaceOverlay,
@@ -378,11 +376,12 @@ async function runIdempotentOperation<T>(
   return result;
 }
 
-function buildTaskNextRun(
+async function buildTaskNextRun(
   scheduleType: 'cron' | 'interval' | 'once',
   scheduleValue: string,
-): string | null {
+): Promise<string | null> {
   if (scheduleType === 'cron') {
+    const { CronExpressionParser } = await import('cron-parser');
     return CronExpressionParser.parse(scheduleValue, { tz: TIMEZONE })
       .next()
       .toISOString();
@@ -399,7 +398,7 @@ function buildTaskNextRun(
   return date.toISOString();
 }
 
-function resolveUpdatedTaskNextRun(
+async function resolveUpdatedTaskNextRun(
   currentTask: {
     schedule_type: 'cron' | 'interval' | 'once';
     schedule_value: string;
@@ -410,7 +409,7 @@ function resolveUpdatedTaskNextRun(
     schedule_value?: string;
     status?: 'active' | 'paused';
   },
-): string | null | undefined {
+): Promise<string | null | undefined> {
   const effectiveStatus = updates.status ?? currentTask.status;
   if (effectiveStatus === 'paused') {
     return null;
@@ -425,7 +424,7 @@ function resolveUpdatedTaskNextRun(
     updates.schedule_value !== undefined ||
     updates.status === 'active'
   ) {
-    return buildTaskNextRun(nextScheduleType, nextScheduleValue);
+    return await buildTaskNextRun(nextScheduleType, nextScheduleValue);
   }
 
   return undefined;
@@ -628,7 +627,7 @@ export async function executeEdgeTool(
             schedule_type: scheduleType,
             schedule_value: scheduleValue,
             context_mode: contextMode,
-            next_run: buildTaskNextRun(scheduleType, scheduleValue),
+            next_run: await buildTaskNextRun(scheduleType, scheduleValue),
             status: 'active',
             created_at: new Date().toISOString(),
           });
@@ -729,7 +728,7 @@ export async function executeEdgeTool(
             updates.status = args.status;
           }
 
-          const nextRun = resolveUpdatedTaskNextRun(task, updates);
+          const nextRun = await resolveUpdatedTaskNextRun(task, updates);
           if (nextRun !== undefined) {
             updates.next_run = nextRun;
           }
@@ -788,6 +787,9 @@ export async function executeEdgeTool(
       }).constructor as new (
         ...args: string[]
       ) => (sdk: Record<string, unknown>) => Promise<unknown>;
+
+      const allowedModules =
+        request.policy.execution?.allowedModuleImports ?? [];
 
       const sdk = {
         workspace: {
@@ -861,10 +863,36 @@ export async function executeEdgeTool(
               })
             ).result,
         },
+        import: async (moduleName: string): Promise<unknown> => {
+          if (!allowedModules.includes(moduleName)) {
+            throw new Error(
+              `Module '${moduleName}' is not allowed. ` +
+                `Available: [${allowedModules.join(', ')}${
+                  allowedModules.length === 0 ? '' : ''
+                }]. ` +
+                `Use sdk.import() for whitelisted module access.`,
+            );
+          }
+          return import(moduleName);
+        },
       };
 
       const executor = new AsyncFunction('sdk', `"use strict";\n${code}`);
-      const result = await executor(sdk);
+      let result: unknown;
+      try {
+        result = await executor(sdk);
+      } catch (execError: unknown) {
+        const message =
+          execError instanceof Error ? execError.message : String(execError);
+        if (message.startsWith('Cannot find package')) {
+          throw new Error(
+            `import() is restricted in edge mode. ` +
+              `Use sdk.import('module') for whitelisted module access. ` +
+              `Original error: ${message}`,
+          );
+        }
+        throw execError;
+      }
 
       return {
         result:

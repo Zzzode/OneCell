@@ -141,6 +141,36 @@ function formatResultSummary(result: unknown, maxLen: number): string {
   }
 }
 
+function formatValuePreview(value: unknown, maxLen: number): string {
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  if (typeof value === 'string') {
+    return value.length > maxLen ? value.slice(0, maxLen - 1) + '\u2026' : value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const str = JSON.stringify(value);
+    return str.length > maxLen ? str.slice(0, maxLen - 1) + '\u2026' : str;
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 0 && entries.length <= 8) {
+      const formatted = entries.map(([k, v]) => {
+        const vs = typeof v === 'string' ? v : JSON.stringify(v);
+        return `${k}: ${vs}`;
+      }).join(', ');
+      if (formatted.length <= maxLen) return formatted;
+    }
+    try {
+      const str = JSON.stringify(value);
+      return str.length > maxLen ? str.slice(0, maxLen - 1) + '\u2026' : str;
+    } catch {
+      return '';
+    }
+  }
+  return String(value);
+}
+
 function formatVerboseToolLine(entry: TerminalPanelTranscriptEntry, maxWidth: number): string {
   const td = entry.toolData!;
   const indent = '    ';
@@ -172,18 +202,39 @@ function formatVerboseToolLine(entry: TerminalPanelTranscriptEntry, maxWidth: nu
       return `${indent}Fetch ${url}${resultStr ? ` (${resultStr})` : ''}`;
     }
     case 'js': {
-      const resultStr = td.status === 'success'
-        ? ` \u2192 ${formatResultSummary(td.result, 30)}`
-        : td.status === 'error'
-          ? ' — error'
-          : '...';
+      let resultStr: string;
+      if (td.status === 'error') {
+        const errPayload =
+          typeof td.result === 'object' && td.result !== null && 'error' in (td.result as Record<string, unknown>)
+            ? String((td.result as Record<string, unknown>).error)
+            : formatResultSummary(td.result, maxContent);
+        resultStr = ` — error: ${errPayload}`;
+      } else if (td.status === 'success') {
+        const raw = td.result;
+        const value =
+          typeof raw === 'object' && raw !== null && 'value' in (raw as Record<string, unknown>)
+            ? (raw as Record<string, unknown>).value
+            : raw;
+        resultStr = ` \u2192 ${formatValuePreview(value, maxContent - 12)}`;
+      } else {
+        resultStr = '...';
+      }
       let line = `${indent}js.exec${resultStr}`;
       const code = typeof td.args.code === 'string' ? td.args.code : '';
       if (code) {
-        const codePreview = code.length > maxContent
-          ? code.slice(0, maxContent - 1) + '\u2026'
-          : code;
-        line += '\n' + indent + codePreview;
+        const codeLines = code.split('\n').filter(Boolean);
+        const maxCodeLines = 3;
+        for (let i = 0; i < Math.min(codeLines.length, maxCodeLines); i++) {
+          const cl = codeLines[i];
+          const truncated = cl.length > maxContent
+            ? cl.slice(0, maxContent - 1) + '\u2026'
+            : cl;
+          line += '\n' + indent + truncated;
+        }
+        const remaining = codeLines.length - maxCodeLines;
+        if (remaining > 0) {
+          line += `\n${indent}\u2026 (+${remaining} more lines)`;
+        }
       }
       return line;
     }

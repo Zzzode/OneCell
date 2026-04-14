@@ -221,7 +221,22 @@ function buildRecentMessages(
     return [{ role: 'user', content: input.prompt.trim() }];
   }
 
-  return selected.reverse();
+  const result = selected.reverse();
+
+  // Ensure alternating roles — consecutive same-role messages violate the
+  // Anthropic Messages API contract and cause 400 errors from some providers
+  // (e.g. DashScope). Merge consecutive same-role messages by joining content.
+  const alternation: typeof result = [];
+  for (const message of result) {
+    const prev = alternation[alternation.length - 1];
+    if (prev && prev.role === message.role) {
+      prev.content = `${prev.content}\n${message.content}`;
+    } else {
+      alternation.push({ ...message });
+    }
+  }
+
+  return alternation;
 }
 
 type ExecutionEventHooksFactory = (
@@ -368,9 +383,13 @@ function getExecutionControlDecision(
   }
 
   if (nowMs - startedAtMs >= request.limits.deadlineMs) {
+    const elapsedSec = Math.round((nowMs - startedAtMs) / 1000);
+    const detail = sawAnyEvent
+      ? `still active after ${elapsedSec}s (last event ${Math.round((nowMs - lastEventAtMs) / 1000)}s ago)`
+      : `no events received after ${elapsedSec}s`;
     return {
       code: 'deadline_exceeded',
-      message: `Edge execution exceeded deadline of ${request.limits.deadlineMs}ms.`,
+      message: `Edge execution exceeded deadline of ${Math.round(request.limits.deadlineMs / 1000)}s: ${detail}.`,
     };
   }
 
@@ -488,6 +507,7 @@ async function consumeExecutionEvents(
         await hooks?.onNeedsFallback?.(event);
         break;
       case 'tool_call':
+        await hooks?.onToolCall?.(event);
         if (
           event.tool === 'message.send' &&
           event.args &&
@@ -525,6 +545,7 @@ async function consumeExecutionEvents(
         }
         break;
       case 'tool_result':
+        await hooks?.onToolResult?.(event);
         deferredToolReceipt = buildDeferredToolReceipt(event);
         break;
       case 'output_delta':

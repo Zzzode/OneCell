@@ -135,6 +135,39 @@ cmake --build build-dev --target node-test
 ./test/nodejs_test_harness --category=node:assert
 ```
 
+### Building the WASIX runtime (--safe mode)
+
+The WASIX build produces a `build-wasix/edgejs.wasm` that the native binary uses as a WebAssembly sandbox in `--safe` mode. This requires the [wasixcc](https://github.com/wasix-org/wasixcc) cross-compiler toolchain.
+
+**One-time toolchain setup:**
+
+```bash
+# Install wasixcc (C/C++ -> wasm32-wasix cross-compiler)
+cargo install wasixcc
+sudo wasixccenv install-executables /usr/local/bin
+
+# Download LLVM + sysroot (see packages/nanoclaw/README.md for detailed steps)
+# Or use the GitHub Action: wasix-org/wasixcc@v0.4.2
+```
+
+**Build the WASM artifact:**
+
+```bash
+bash wasix/build-wasix.sh
+# Output: build-wasix/edgejs.wasm
+```
+
+The script handles everything: cloning wasix deps (libuv, openssl), building static libraries, running CMake with the wasix toolchain, and post-processing the wasm binary.
+
+**CI equivalent:**
+
+```bash
+cmake --preset release                      # native build required first
+cmake --build build-release --target build-wasix
+cmake --build build-release --target build-napi-wasmer-cli
+cmake --build build-release --target test-wasix-napi-cli
+```
+
 ## Architecture
 
 For architecture details, see [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
