@@ -23,6 +23,7 @@ import {
   listTaskNodes,
   listExecutionStates,
   updateTask,
+  clearConversationMessages,
 } from '../db.js';
 import { buildFrameworkObservabilitySnapshot } from '../framework-observability.js';
 import {
@@ -294,6 +295,24 @@ function recordTerminalTranscript(
   if (terminalTranscript.length > TERMINAL_TRANSCRIPT_LIMIT) {
     terminalTranscript = terminalTranscript.slice(-TERMINAL_TRANSCRIPT_LIMIT);
   }
+}
+
+function recordTerminalToolEntry(
+  text: string,
+  toolData: import('../terminal-panel.js').ToolTranscriptEntry,
+): import('../terminal-panel.js').TerminalPanelTranscriptEntry {
+  const at = new Date().toISOString();
+  const entry: import('../terminal-panel.js').TerminalPanelTranscriptEntry = {
+    at,
+    role: 'tool',
+    text,
+    toolData,
+  };
+  terminalTranscript.push(entry);
+  if (terminalTranscript.length > TERMINAL_TRANSCRIPT_LIMIT) {
+    terminalTranscript = terminalTranscript.slice(-TERMINAL_TRANSCRIPT_LIMIT);
+  }
+  return entry;
 }
 
 function clearTerminalEventLog(): void {
@@ -574,6 +593,7 @@ class TerminalChannel implements Channel {
     this.connected = true;
     activeTerminalChannel = this;
     silenceLogger();
+    clearConversationMessages(TERMINAL_GROUP_JID);
     this.opts.onChatMetadata(
       TERMINAL_GROUP_JID,
       new Date().toISOString(),
@@ -598,10 +618,6 @@ class TerminalChannel implements Channel {
   private async handleInterrupt(): Promise<void> {
     if (this.dismissHighestPrioritySurface()) {
       this.renderScreen(true);
-      return;
-    }
-    const isBusy = this.typingByJid.has(TERMINAL_GROUP_JID);
-    if (!isBusy && !this.hasActiveExecutions()) {
       return;
     }
     this.latestSystemEvent = '已请求打断当前执行';
@@ -789,6 +805,7 @@ class TerminalChannel implements Channel {
     }
 
     await this.opts.onResetSession?.(TERMINAL_GROUP_FOLDER);
+    clearConversationMessages(TERMINAL_GROUP_JID);
     this.lastAssistantMessageByJid.delete(TERMINAL_GROUP_JID);
     this.latestAssistantMessage = null;
     this.latestSystemEvent = '已清空当前 terminal provider session';
@@ -805,9 +822,11 @@ class TerminalChannel implements Channel {
 
   private renderScreen(_force = false): void {
     const busy = this.typingByJid.has(TERMINAL_GROUP_JID);
+    const width = process.stdout.columns ?? 100;
     const props = {
       backend: TERMINAL_GROUP_EXECUTION_MODE,
       busy,
+      width,
       latestSystemEvent: this.latestSystemEvent,
       latestAssistantMessage: this.latestAssistantMessage,
       recentSystemEvents: terminalEventTail(4),
@@ -955,6 +974,24 @@ class TerminalChannel implements Channel {
 
 export function emitTerminalSystemEvent(jid: string, text: string): void {
   activeTerminalChannel?.sendSystemEvent(jid, text);
+}
+
+export function emitTerminalToolEvent(
+  jid: string,
+  text: string,
+  toolData: import('../terminal-panel.js').ToolTranscriptEntry,
+): import('../terminal-panel.js').TerminalPanelTranscriptEntry | null {
+  if (!activeTerminalChannel?.ownsJid(jid)) return null;
+  const normalized = text.trim();
+  recordTerminalEvent(normalized || `tool: ${toolData.tool}`);
+  const entry = recordTerminalToolEntry(normalized, toolData);
+  activeTerminalChannel['renderScreen'](true);
+  return entry;
+}
+
+export function emitTerminalRefresh(jid: string): void {
+  if (!activeTerminalChannel?.ownsJid(jid)) return;
+  activeTerminalChannel['renderScreen'](true);
 }
 
 registerChannel('terminal', (opts) => {
