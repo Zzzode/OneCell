@@ -15,6 +15,8 @@ interface TextInputProps {
   onShiftUp?: () => void
   /** Called on Shift+Down */
   onShiftDown?: () => void
+  /** Called on Ctrl+O (verbose toggle) */
+  onCtrlO?: () => void
   /** Whether the app is busy processing */
   busy?: boolean
   /** External value override — when set, the component is controlled */
@@ -29,6 +31,7 @@ export function TextInput({
   onEscape,
   onShiftUp,
   onShiftDown,
+  onCtrlO,
   busy = false,
   value: externalValue,
   onChange,
@@ -51,6 +54,10 @@ export function TextInput({
   // ESC and Shift+Arrow must work even when busy (for interrupting/focusing)
   useInput(
     (input, key) => {
+      if (key.ctrl && input === 'o') {
+        onCtrlO?.()
+        return
+      }
       if (key.escape) {
         onEscape()
         return
@@ -149,7 +156,6 @@ export function TextInput({
 
   return (
     <Box>
-      <Text> </Text>
       <Text color={theme.text}>{busy ? '…' : '›'} </Text>
       {busy ? (
         <Text color={theme.subtle}>{placeholder}</Text>
