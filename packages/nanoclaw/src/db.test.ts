@@ -32,7 +32,7 @@ import {
   updateLogicalSession,
   updateTask,
 } from './db.js';
-import { formatMessages } from './router.js';
+import { formatMessages } from './routing/router.js';
 
 beforeEach(() => {
   _initTestDatabase();

@@ -5,7 +5,7 @@
 // imported. This is guaranteed because index.ts uses a dynamic import for
 // channels that runs after initConfig().
 
-import { getAppConfig } from '../config.js';
+import { getAppConfig } from '../config/config.js';
 
 const config = getAppConfig();
 

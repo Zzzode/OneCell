@@ -114,7 +114,7 @@ vi.mock('../framework-observability.js', () => ({
   })),
 }));
 
-vi.mock('../terminal-observability.js', () => ({
+vi.mock('../terminal/terminal-observability.js', () => ({
   buildTerminalActiveTurnSummary: vi.fn(() => 'activeTurn: none'),
   buildTerminalAgentsSummaryFromObservability: vi.fn(() => null),
   buildTerminalFocusSummary: vi.fn(() => null),
@@ -134,7 +134,7 @@ import {
   listExecutionStates,
   updateTask,
 } from '../db.js';
-import { deleteScheduledTask } from '../task-control.js';
+import { deleteScheduledTask } from '../tasks/task-control.js';
 import {
   appendTerminalEventForTests,
   buildTerminalAgentsSummary,
@@ -158,7 +158,7 @@ import {
   cycleTerminalFocus,
   resetTerminalObservability,
   setTerminalFocus,
-} from '../terminal-observability.js';
+} from '../terminal/terminal-observability.js';
 
 /** Simulate a line submission by extracting the onSubmit callback from the last rendered TerminalApp props. */
 function submitLine(text: string): void {

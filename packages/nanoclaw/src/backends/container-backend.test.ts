@@ -9,15 +9,15 @@ const { ensureContainerRuntimeRunningMock, runContainerAgentMock } = vi.hoisted(
   }),
 );
 
-vi.mock('../container-runner.js', () => ({
+vi.mock('../container/container-runner.js', () => ({
   runContainerAgent: runContainerAgentMock,
 }));
 
-vi.mock('../container-runtime.js', () => ({
+vi.mock('../container/container-runtime.js', () => ({
   ensureContainerRuntimeRunning: ensureContainerRuntimeRunningMock,
 }));
 
-import type { AgentRunInput } from '../agent-backend.js';
+import type { AgentRunInput } from '../framework/agent-backend.js';
 import { containerBackend, heavyWorker } from './container-backend.js';
 import type { RegisteredGroup } from '../types.js';
 

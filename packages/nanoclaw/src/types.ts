@@ -1,4 +1,4 @@
-import type { ExecutionMode } from './execution-mode.js';
+import type { ExecutionMode } from './framework/execution-mode.js';
 
 export interface AdditionalMount {
   hostPath: string; // Absolute path on host (supports ~ for home)

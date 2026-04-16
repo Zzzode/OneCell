@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { initConfig } from './config.js';
-import type { NanoclawConfigFile } from './nanoclaw-config.js';
+import { initConfig } from './config/config.js';
+import type { NanoclawConfigFile } from './config/nanoclaw-config.js';
 
 export const TEST_CONFIG: NanoclawConfigFile = {
   profile: 'terminal',

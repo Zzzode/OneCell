@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Channel } from './types.js';
 
+// Type-only import to verify the module interface
+
 const { edgeBackendRun, containerBackendRun } = vi.hoisted(() => ({
   edgeBackendRun: vi.fn(),
   containerBackendRun: vi.fn(),
@@ -35,7 +37,7 @@ vi.mock('./backends/container-backend.js', () => ({
   },
 }));
 
-vi.mock('./container-snapshot-writer.js', () => ({
+vi.mock('./edge/container-snapshot-writer.js', () => ({
   writeTasksSnapshotToIpc: vi.fn(),
   writeGroupsSnapshotToIpc: vi.fn(),
   writeObservabilitySnapshotToIpc: vi.fn(),
@@ -54,7 +56,7 @@ vi.mock('./channels/terminal.js', async () => {
 
 describe('index group runtime fallback', () => {
   beforeEach(async () => {
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
     retry.clearTerminalRetryState();
   });
   const originalShadowMode = process.env.SHADOW_EXECUTION_MODE;
@@ -179,7 +181,7 @@ describe('index group runtime fallback', () => {
     ]);
 
     expect(db.getAllSessions()).toEqual({});
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
     expect(retry.getTerminalRetryState()).toMatchObject({
       chatJid: 'term:canary-group',
       groupFolder: 'terminal_canary',
@@ -262,7 +264,7 @@ describe('index group runtime fallback', () => {
     expect(edgeBackendRun).toHaveBeenCalledTimes(1);
     expect(containerBackendRun).not.toHaveBeenCalled();
 
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
     expect(retry.getTerminalRetryState()).toMatchObject({
       chatJid: 'term:canary-group',
       groupFolder: 'terminal_canary',
@@ -353,7 +355,7 @@ describe('index group runtime fallback', () => {
       sessionId: 'session-edge-1',
       chatJid: 'term:canary-group',
     });
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
     expect(retry.getTerminalRetryState()).toBeNull();
     expect(db.getAllSessions()).toEqual({
       terminal_canary: 'session-heavy-edge',
@@ -381,7 +383,7 @@ describe('index group runtime fallback', () => {
     index._setSessionsForTests({ terminal_canary: 'session-edge-1' });
     index._setLastAgentTimestampForTests({});
 
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
     retry.setTerminalRetryState({
       prompt: 'retry me',
       groupFolder: 'terminal_canary',
@@ -432,7 +434,7 @@ describe('index group runtime fallback', () => {
     index._setSessionsForTests({ terminal_canary: 'session-edge-1' });
     index._setLastAgentTimestampForTests({});
 
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
     retry.setTerminalRetryState({
       prompt: 'retry me',
       groupFolder: 'terminal_canary',
@@ -618,7 +620,7 @@ describe('index group runtime fallback', () => {
 
     const db = await import('./db.js');
     const index = await import('./index.js');
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
 
     db._initTestDatabase();
     index._setRegisteredGroups({});
@@ -701,7 +703,7 @@ describe('index group runtime fallback', () => {
 
     const db = await import('./db.js');
     const index = await import('./index.js');
-    const retry = await import('./terminal-retry.js');
+    const retry = await import('./terminal/terminal-retry.js');
 
     db._initTestDatabase();
     retry.clearTerminalRetryState();
@@ -766,8 +768,8 @@ describe('index group runtime fallback', () => {
     const db = await import('./db.js');
     const index = await import('./index.js');
     const { createRootTaskGraph, markTaskNodeRunning } =
-      await import('./task-graph-state.js');
-    const { beginExecution } = await import('./execution-state.js');
+      await import('./tasks/task-graph-state.js');
+    const { beginExecution } = await import('./framework/execution-state.js');
 
     db._initTestDatabase();
     index._setRegisteredGroups({});

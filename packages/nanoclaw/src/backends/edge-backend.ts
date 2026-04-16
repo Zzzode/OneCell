@@ -6,7 +6,7 @@ import {
   AgentRunInput,
   AgentRunOutput,
   ExecutionStartedCallback,
-} from '../agent-backend.js';
+} from '../framework/agent-backend.js';
 import {
   createToolOperation,
   getExecutionState,
@@ -17,17 +17,17 @@ import {
   EDGE_ALLOWED_TOOL_SET,
   EDGE_SHADOW_ALLOWED_TOOL_SET,
   deriveCapabilitiesFromTools,
-} from '../edge-capabilities.js';
-import { createPersistentExecutionEventHooks } from '../edge-event-dispatcher.js';
-import { localEdgeRunner, type EdgeRunner } from '../edge-runner.js';
-import { createSubprocessEdgeRunner } from '../edge-subprocess-runner.js';
+} from '../edge/edge-capabilities.js';
+import { createPersistentExecutionEventHooks } from '../edge/edge-event-dispatcher.js';
+import { localEdgeRunner, type EdgeRunner } from '../edge/edge-runner.js';
+import { createSubprocessEdgeRunner } from '../edge/edge-subprocess-runner.js';
 import { RegisteredGroup } from '../types.js';
-import { getAppConfig } from '../config.js';
+import { getAppConfig } from '../config/config.js';
 import {
   ensureWorkspaceVersion,
   getWorkspaceManifest,
-} from '../workspace-service.js';
-import type { FrameworkWorker } from '../framework-worker.js';
+} from '../infra/workspace-service.js';
+import type { FrameworkWorker } from '../framework/framework-worker.js';
 
 const EDGE_MODEL_PROFILE = 'edge-local-dev';
 const EDGE_MAX_OUTPUT_BYTES = 64 * 1024;

@@ -14,7 +14,7 @@ import {
   TERMINAL_USER_JID,
   TERMINAL_USER_NAME,
   TIMEZONE,
-} from '../config.js';
+} from '../config/config.js';
 import {
   getAllTasks,
   getTaskById,
@@ -25,10 +25,10 @@ import {
   updateTask,
   clearConversationMessages,
 } from '../db.js';
-import { buildFrameworkObservabilitySnapshot } from '../framework-observability.js';
+import { buildFrameworkObservabilitySnapshot } from '../framework/framework-observability.js';
 import {
   type TerminalPanelTranscriptEntry,
-} from '../terminal-panel.js';
+} from '../terminal/terminal-panel.js';
 import {
   buildTerminalActiveTurnSummary,
   buildTerminalAgentsSummaryFromObservability,
@@ -37,12 +37,12 @@ import {
   cycleTerminalFocus,
   resetTerminalObservability,
   setTerminalFocus,
-} from '../terminal-observability.js';
-import { deleteScheduledTask } from '../task-control.js';
-import { silenceLogger, unsilenceLogger } from '../logger.js';
+} from '../terminal/terminal-observability.js';
+import { deleteScheduledTask } from '../tasks/task-control.js';
+import { silenceLogger, unsilenceLogger } from '../infra/logger.js';
 import type { Channel } from '../types.js';
-import { formatDisplayDateTime } from '../timezone.js';
-import { TerminalApp } from '../terminal-app.js';
+import { formatDisplayDateTime } from '../infra/timezone.js';
+import { TerminalApp } from '../terminal/terminal-app.js';
 import { registerChannel, type ChannelOpts } from './registry.js';
 
 const COLOR_DIM = '\x1b[90m';
@@ -304,10 +304,10 @@ function recordTerminalTranscript(
 
 function recordTerminalToolEntry(
   text: string,
-  toolData: import('../terminal-panel.js').ToolTranscriptEntry,
-): import('../terminal-panel.js').TerminalPanelTranscriptEntry {
+  toolData: import('../terminal/terminal-panel.js').ToolTranscriptEntry,
+): import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry {
   const at = new Date().toISOString();
-  const entry: import('../terminal-panel.js').TerminalPanelTranscriptEntry = {
+  const entry: import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry = {
     at,
     role: 'tool',
     text,
@@ -997,8 +997,8 @@ export function emitTerminalSystemEvent(jid: string, text: string): void {
 export function emitTerminalToolEvent(
   jid: string,
   text: string,
-  toolData: import('../terminal-panel.js').ToolTranscriptEntry,
-): import('../terminal-panel.js').TerminalPanelTranscriptEntry | null {
+  toolData: import('../terminal/terminal-panel.js').ToolTranscriptEntry,
+): import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry | null {
   if (!activeTerminalChannel?.ownsJid(jid)) return null;
   const normalized = text.trim();
   recordTerminalEvent(normalized || `tool: ${toolData.tool}`);
