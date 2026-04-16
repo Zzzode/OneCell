@@ -1087,6 +1087,55 @@ describe('terminal ui helpers', () => {
     }
   });
 
+  it('deduplicates user input with lookback when system/tool events interleave', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      // First user input
+      submitLine('今天星期几');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // System event interleaves
+      emitTerminalSystemEvent('term:canary-group', '执行开始：graph:turn');
+      emitTerminalToolEvent('term:canary-group', 'workspace.read(config.ts)', {
+        tool: 'workspace.read',
+        args: { path: 'config.ts' },
+        status: 'running',
+      });
+
+      // Same user input again (simulating duplicate submission)
+      submitLine('今天星期几');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      // Should contain the user input
+      expect(finalFrame).toContain('今天星期几');
+
+      // Count occurrences of the user input line marker '>' before the same text
+      // There should be only one user line for the same input
+      const userLinesWithText = finalFrame
+        .split('\n')
+        .filter((line) => line.includes('今天星期几'));
+      expect(userLinesWithText.length).toBe(1);
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
   it('clears conversation transcript via `/new`', async () => {
     const writeSpy = vi
       .spyOn(process.stdout, 'write')

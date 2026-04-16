@@ -1,30 +1,30 @@
 import { describe, it, expect } from 'vitest'
 import { renderToString } from 'ink'
 import React from 'react'
-import { StatusBar } from './status-bar.js'
+import { FooterBar } from './status-bar.js'
 
-describe('StatusBar', () => {
-  it('renders brand marker and backend name', () => {
+describe('FooterBar', () => {
+  it('renders backend name', () => {
     const output = renderToString(
-      <StatusBar backend="edge" agentCount={3} runningCount={1} />,
+      <FooterBar backend="edge" agentCount={3} runningCount={1} />,
     )
-    expect(output).toContain('NanoClaw')
     expect(output).toContain('edge')
     expect(output).toContain('3 agents')
   })
 
-  it('shows running count in success color when > 0', () => {
+  it('shows running count when > 0', () => {
     const output = renderToString(
-      <StatusBar backend="edge" agentCount={3} runningCount={1} />,
+      <FooterBar backend="edge" agentCount={3} runningCount={1} />,
     )
     expect(output).toContain('1 running')
   })
 
-  it('omits running count when 0', () => {
+  it('omits agent and running count when 0', () => {
     const output = renderToString(
-      <StatusBar backend="edge" agentCount={2} runningCount={0} />,
+      <FooterBar backend="edge" agentCount={0} runningCount={0} />,
     )
-    expect(output).toContain('2 agents')
+    expect(output).toContain('edge')
+    expect(output).not.toContain('0 agents')
     expect(output).not.toContain('0 running')
   })
 })

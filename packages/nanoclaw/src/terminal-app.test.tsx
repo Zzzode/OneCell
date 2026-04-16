@@ -16,7 +16,6 @@ describe('TerminalApp', () => {
         overlay={{ kind: null, body: null }}
       />,
     )
-    expect(output).toContain('NanoClaw')
     expect(output).toContain('edge')
   })
 

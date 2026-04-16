@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   ExecutionEvent,
   ExecutionFinalResult,
@@ -5,6 +8,30 @@ import {
   WorkspaceOverlay,
 } from './agent-backend.js';
 import { getEdgeHostBridge } from './edge-host-bridge.js';
+
+// ---------------------------------------------------------------------------
+// File-based debug log for edge execution — always writable regardless of
+// terminal alternateScreen silencing.  Enable with DEBUG=nanoclaw:edge.
+// Writes to .nanoclaw-debug.jsonl next to the source (one JSON object per
+// line, easy to `tail -f` or `cat | jq`).
+// ---------------------------------------------------------------------------
+const DEBUG_EDGE = !!process.env.DEBUG?.includes('nanoclaw:edge');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEBUG_PATH = path.join(__dirname, '..', '.nanoclaw-debug.jsonl');
+let debugFd: number | null = null;
+
+function debugLog(event: Record<string, unknown>): void {
+  if (!DEBUG_EDGE) return;
+  try {
+    if (debugFd === null) {
+      debugFd = fs.openSync(DEBUG_PATH, 'a');
+    }
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...event }) + '\n';
+    fs.writeSync(debugFd, line);
+  } catch {
+    // best-effort
+  }
+}
 
 export interface EdgeRunner {
   runTurn(
@@ -553,11 +580,58 @@ function buildAnthropicSystemPrompt(request: ExecutionRequest): string {
   return sections.join('\n\n');
 }
 
+function serializeMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    // Serialize content blocks into a readable string that preserves
+    // tool_use / tool_result / text / thinking semantics.
+    const parts: string[] = [];
+    for (const block of content) {
+      if (typeof block !== 'object' || block === null) continue;
+      const b = block as Record<string, unknown>;
+      if (b.type === 'text' && typeof b.text === 'string') {
+        parts.push(b.text);
+      } else if (b.type === 'tool_use') {
+        const name = typeof b.name === 'string' ? b.name : 'unknown';
+        const input =
+          typeof b.input === 'string'
+            ? b.input
+            : JSON.stringify(b.input ?? {});
+        parts.push(`[tool_use: ${name}] ${input}`);
+      } else if (b.type === 'tool_result') {
+        const resultContent =
+          typeof b.content === 'string'
+            ? b.content
+            : JSON.stringify(b.content ?? '');
+        const isError = b.is_error ? ' (error)' : '';
+        parts.push(`[tool_result${isError}] ${resultContent}`);
+      } else if (b.type === 'thinking' && typeof b.thinking === 'string') {
+        parts.push(b.thinking);
+      } else {
+        try {
+          parts.push(JSON.stringify(b));
+        } catch {
+          // skip
+        }
+      }
+    }
+    return parts.join('\n');
+  }
+  if (content != null && typeof content === 'object') {
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return '';
+    }
+  }
+  return String(content ?? '');
+}
+
 function buildAnthropicMessages(request: ExecutionRequest): AnthropicMessage[] {
   if (request.promptPackage.recentMessages.length > 0) {
     return request.promptPackage.recentMessages.map((message) => ({
       role: message.role,
-      content: message.content,
+      content: serializeMessageContent(message.content),
     }));
   }
   return [{ role: 'user', content: '(empty prompt)' }];
@@ -935,13 +1009,43 @@ class AnthropicEdgeRunner implements EdgeRunner {
       const baseUrl = (
         request.runner?.apiBaseUrl || 'https://api.anthropic.com'
       ).replace(/\/+$/, '');
+      // Serialize all message content to strings at the API boundary.
+      // DashScope's Anthropic-compatible endpoint does not accept content block
+      // arrays — only plain string content is safe across providers.
+      const apiMessages = messages.map((m) => ({
+        role: m.role,
+        content: serializeMessageContent(m.content),
+      }));
       const requestPayload = {
         model: request.runner?.model || 'claude-sonnet-4-20250514',
         max_tokens: 1024,
         system: buildAnthropicSystemPrompt(request),
-        messages,
+        messages: apiMessages,
         ...(activeTools.length > 0 ? { tools: activeTools } : {}),
       };
+      debugLog({
+        event: 'api_request',
+        executionId: request.executionId,
+        model: requestPayload.model,
+        msgCount: apiMessages.length,
+        msgRoles: apiMessages.map((m) => m.role),
+        toolsCount: activeTools.length,
+        systemLen: (requestPayload.system as string).length,
+        // Log full payload for deep debugging (truncated per-message content)
+        payloadPreview: {
+          model: requestPayload.model,
+          max_tokens: requestPayload.max_tokens,
+          messages: apiMessages.map((m) => ({
+            role: m.role,
+            contentType: typeof m.content,
+            contentPreview:
+              typeof m.content === 'string'
+                ? m.content.slice(0, 200)
+                : JSON.stringify(m.content).slice(0, 200),
+          })),
+          tools: activeTools.map((t: Record<string, unknown>) => t.name),
+        },
+      });
       const response = yield* withHeartbeatWhilePending({
         executionId: request.executionId,
         signal,
@@ -960,6 +1064,12 @@ class AnthropicEdgeRunner implements EdgeRunner {
 
       if (!response.ok) {
         const body = await response.text();
+        debugLog({
+          event: 'api_error',
+          executionId: request.executionId,
+          status: response.status,
+          responseBody: body.slice(0, 1000),
+        });
         // Fallback: if 400 and tools were included, retry without tools
         if (
           response.status === 400 &&
@@ -971,9 +1081,11 @@ class AnthropicEdgeRunner implements EdgeRunner {
           continue;
         }
         const msgRoles = messages.map((m) => m.role).join(',');
-        const debugLine = `model=${requestPayload.model} msgs=${messages.length}(${msgRoles}) tools=${activeTools.length} syslen=${requestPayload.system.length}`;
-        const apiHint = body.slice(0, 120);
-        const message = `Anthropic ${response.status} | ${debugLine} | ${apiHint}`;
+        const sysLen = typeof requestPayload.system === 'string' ? requestPayload.system.length : 0;
+        const debugLine = `model=${requestPayload.model} msgs=${messages.length}(${msgRoles}) tools=${activeTools.length} syslen=${sysLen}`;
+        const apiHint = body.slice(0, 300);
+        const messagesPreview = messages.map((m) => `${m.role}: ${String(m.content).slice(0, 80)}`).join(' | ');
+        const message = `Anthropic ${response.status} | ${debugLine} | msgs=[${messagesPreview}] | ${apiHint}`;
         yield {
           type: 'error',
           executionId: request.executionId,
@@ -993,6 +1105,17 @@ class AnthropicEdgeRunner implements EdgeRunner {
       }
 
       const data = JSON.parse(await response.text()) as AnthropicResponse;
+      debugLog({
+        event: 'api_response',
+        executionId: request.executionId,
+        stopReason: data.stop_reason,
+        contentTypes: data.content.map((b) => b.type),
+        textLen: data.content
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text?.length ?? 0)
+          .reduce((a, b) => a + b, 0),
+        toolUseCount: data.content.filter((b) => b.type === 'tool_use').length,
+      });
       const assistantText = data.content
         .filter(
           (block) => block.type === 'text' && typeof block.text === 'string',

@@ -156,6 +156,31 @@ function buildSystemPrompt(
   return instructions ? `${base}\n\n${instructions}` : base;
 }
 
+function ensureStringContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(
+        (b: unknown) =>
+          typeof b === 'object' &&
+          b !== null &&
+          'type' in (b as Record<string, unknown>) &&
+          (b as Record<string, unknown>).type === 'text' &&
+          typeof (b as Record<string, unknown>).text === 'string',
+      )
+      .map((b: unknown) => (b as { text: string }).text)
+      .join('');
+  }
+  if (content != null && typeof content === 'object') {
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return '';
+    }
+  }
+  return String(content ?? '');
+}
+
 function clampRecentMessageContent(content: string): string {
   if (content.length <= EDGE_RECENT_MESSAGE_MAX_ITEM_CHARS) {
     return content;
@@ -193,8 +218,8 @@ function buildRecentMessages(
       role: message.isBotMessage ? 'assistant' : 'user',
       content: clampRecentMessageContent(
         message.isBotMessage || message.isFromMe
-          ? message.content
-          : `${message.senderName}: ${message.content}`,
+          ? ensureStringContent(message.content)
+          : `${message.senderName}: ${ensureStringContent(message.content)}`,
       ),
     }));
 

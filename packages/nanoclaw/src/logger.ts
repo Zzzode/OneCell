@@ -63,7 +63,10 @@ function log(
   msg?: string,
 ): void {
   if (LEVELS[level] < envThreshold) return;
-  if (silenced && level !== 'fatal' && level !== 'error') return;
+  // When silenced (Ink is managing the screen), suppress all direct writes.
+  // Ink's alternateScreen only controls stdout; stderr writes corrupt the
+  // rendered output by interleaving with Ink frames.
+  if (silenced) return;
   const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
   const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
   if (typeof dataOrMsg === 'string') {

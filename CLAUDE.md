@@ -52,3 +52,12 @@ ctest --preset dev                                  # Run debug test preset
 - nanoclaw imports `binaryPath` from `@onecell/edgejs` to locate the edge runtime binary.
 - `packages/edgejs/runtime-api.js` resolves the built binary from the repo-level native build output.
 - edgejs must be built before nanoclaw can use edge execution mode backed by the real runtime.
+
+## Reference
+
+When fixing bugs or implement features, please reference projects following:
+
+- Harness engineering and UI implementation should reference:
+  - `/Users/bytedance/Develop/claude-code/` — Claude Code CLI implementation
+  - `/Users/bytedance/Develop/codex/` — OpenAI Codex CLI implementation
+  - `/Users/bytedance/Develop/opencode/` — OpenCode CLI implementation
