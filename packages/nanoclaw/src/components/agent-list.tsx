@@ -1,7 +1,7 @@
 import React from 'react'
 import { Text, Box } from 'ink'
-import { getTheme, resolveTheme } from '../theme.js'
-import type { TerminalWorkerState } from '../terminal-observability.js'
+import { getTheme, resolveTheme } from '../infra/theme.js'
+import type { TerminalWorkerState } from '../terminal/terminal-observability.js'
 
 const theme = getTheme(resolveTheme())
 

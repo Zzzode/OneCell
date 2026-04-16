@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { renderToString } from 'ink'
 import React from 'react'
 import { AgentList } from './agent-list.js'
-import type { TerminalWorkerState } from '../terminal-observability.js'
+import type { TerminalWorkerState } from '../terminal/terminal-observability.js'
 
 function makeWorker(
   overrides: Partial<TerminalWorkerState> = {},

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Text, Box } from 'ink'
-import { getTheme, resolveTheme } from '../theme.js'
+import { getTheme, resolveTheme } from '../infra/theme.js'
 
 const theme = getTheme(resolveTheme())
 

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Text, useInput } from 'ink'
-import { getTheme, resolveTheme } from '../theme.js'
+import { getTheme, resolveTheme } from '../infra/theme.js'
 
 const theme = getTheme(resolveTheme())
 

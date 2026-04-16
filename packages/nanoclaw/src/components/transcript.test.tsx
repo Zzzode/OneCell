@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { renderToString } from 'ink'
 import React from 'react'
 import { Transcript } from './transcript.js'
-import type { TerminalPanelTranscriptEntry } from '../terminal-panel.js'
+import type { TerminalPanelTranscriptEntry } from '../terminal/terminal-panel.js'
 
 function toolEntry(
   tool: string,
