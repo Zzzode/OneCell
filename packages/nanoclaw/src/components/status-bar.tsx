@@ -1,30 +1,37 @@
 import React from 'react'
 import { Text, Box } from 'ink'
-import { getTheme, resolveTheme } from '../theme.js'
 
-const theme = getTheme(resolveTheme())
-
-interface StatusBarProps {
+interface FooterBarProps {
   backend: string
   agentCount: number
   runningCount: number
 }
 
-export function StatusBar({ backend, agentCount, runningCount }: StatusBarProps) {
+/**
+ * Compact footer bar shown below the input box.
+ * Displayed as a dim single-line status, matching Claude Code's PromptInputFooter style.
+ */
+export function FooterBar({ backend, agentCount, runningCount }: FooterBarProps) {
   return (
-    <Box gap={1}>
-      <Text color={theme.brand}>◆</Text>
-      <Text color={theme.inactive}>NanoClaw</Text>
-      <Text color={theme.subtle}>·</Text>
-      <Text color={theme.inactive}>{backend}</Text>
-      <Text color={theme.subtle}>·</Text>
-      <Text color={theme.inactive}>{agentCount} agents</Text>
+    <Box paddingX={2} gap={1}>
+      <Text dimColor>{backend}</Text>
+      {agentCount > 0 && (
+        <>
+          <Text dimColor>·</Text>
+          <Text dimColor>{agentCount} agents</Text>
+        </>
+      )}
       {runningCount > 0 && (
         <>
-          <Text color={theme.subtle}>·</Text>
-          <Text color={theme.success}>{runningCount} running</Text>
+          <Text dimColor>·</Text>
+          <Text dimColor>{runningCount} running</Text>
         </>
       )}
     </Box>
   )
 }
+
+/**
+ * @deprecated Use FooterBar instead.
+ */
+export const StatusBar = FooterBar

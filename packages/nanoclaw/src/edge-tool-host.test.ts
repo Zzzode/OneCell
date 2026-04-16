@@ -369,11 +369,8 @@ describe('edge tool host', () => {
     });
 
     expect(result.result).toEqual({
-      ok: true,
-      value: {
-        path: 'script.txt',
-        content: 'hello from edge sdk',
-      },
+      path: 'script.txt',
+      content: 'hello from edge sdk',
     });
   });
 });

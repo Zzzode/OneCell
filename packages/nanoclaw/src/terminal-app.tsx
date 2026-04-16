@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Text } from 'ink'
 import { getTheme, resolveTheme } from './theme.js'
-import { StatusBar } from './components/status-bar.js'
+import { FooterBar } from './components/status-bar.js'
 import { Transcript } from './components/transcript.js'
 import { Spinner } from './components/spinner.js'
 import { TextInput } from './components/text-input.js'
@@ -73,6 +73,7 @@ export function TerminalApp({
   drawer,
   overlay,
   width = 100,
+  height,
   onSubmit,
   onEscape,
   onShiftUp,
@@ -90,49 +91,58 @@ export function TerminalApp({
   )
 
   return (
-    <Box flexDirection="column" width={width}>
-      <StatusBar
-        backend={backend}
-        agentCount={0}
-        runningCount={0}
-      />
-      <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
+    <Box flexDirection="column" width={width} {...(height ? { height } : {})}>
+      {/* Scrollable transcript area — takes remaining vertical space */}
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        <Transcript entries={recentTranscript} width={width} verbose={verbose} />
 
-      <Transcript entries={recentTranscript} width={width} verbose={verbose} />
+        {sidePanel?.isOpen && sidePanel.body && (
+          <Box flexDirection="column" marginTop={1}>
+            <Text color={theme.brand}>{sidePanelTitle(sidePanel.tab)}</Text>
+            {sidePanel.body.split('\n').map((line, i) => (
+              <Text key={i} color={theme.inactive}>{line}</Text>
+            ))}
+          </Box>
+        )}
 
-      {sidePanel?.isOpen && sidePanel.body && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={theme.brand}>{sidePanelTitle(sidePanel.tab)}</Text>
-          {sidePanel.body.split('\n').map((line, i) => (
-            <Text key={i} color={theme.inactive}>{line}</Text>
-          ))}
+        {drawer?.isOpen && drawer.body && (
+          <Box flexDirection="column" marginTop={1}>
+            <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
+            <Text color={theme.brand}>{drawer.tab === 'logs' ? 'Logs' : 'Drawer'}</Text>
+            {drawer.body.split('\n').map((line, i) => (
+              <Text key={i} color={theme.inactive}>{line}</Text>
+            ))}
+          </Box>
+        )}
+
+        {overlay?.kind && overlay.body && (
+          <Box flexDirection="column" marginTop={1}>
+            <Text color={theme.brand}>{overlayTitle(overlay.kind)}</Text>
+            {overlay.body.split('\n').map((line, i) => (
+              <Text key={i} color={theme.text}>{line}</Text>
+            ))}
+          </Box>
+        )}
+
+        {/* Spacer pushes spinner to the bottom of the scrollable area */}
+        <Box flexGrow={1} />
+      </Box>
+
+      {/* Spinner: just above input box, pinned at bottom of scrollable area */}
+      {busy && (
+        <Box marginTop={1} gap={1}>
+          <Spinner />
+          <Text dimColor>thinking...</Text>
         </Box>
       )}
 
-      {drawer?.isOpen && drawer.body && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={theme.border}>{'─'.repeat(Math.max(1, width))}</Text>
-          <Text color={theme.brand}>{drawer.tab === 'logs' ? 'Logs' : 'Drawer'}</Text>
-          {drawer.body.split('\n').map((line, i) => (
-            <Text key={i} color={theme.inactive}>{line}</Text>
-          ))}
-        </Box>
-      )}
-
-      {overlay?.kind && overlay.body && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={theme.brand}>{overlayTitle(overlay.kind)}</Text>
-          {overlay.body.split('\n').map((line, i) => (
-            <Text key={i} color={theme.text}>{line}</Text>
-          ))}
-        </Box>
-      )}
-
+      {/* Input box: top+bottom border only, pinned at bottom */}
       <Box
         flexDirection="column"
-        marginTop={1}
         borderColor={theme.border}
         borderStyle="round"
+        borderLeft={false}
+        borderRight={false}
         paddingX={1}
       >
         <TextInput
@@ -148,12 +158,12 @@ export function TerminalApp({
         />
       </Box>
 
-      {busy && (
-        <Box marginLeft={2} gap={1}>
-          <Spinner />
-          <Text color={theme.inactive}>thinking...</Text>
-        </Box>
-      )}
+      {/* Footer: below input box */}
+      <FooterBar
+        backend={backend}
+        agentCount={0}
+        runningCount={0}
+      />
     </Box>
   )
 }

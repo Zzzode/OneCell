@@ -7,6 +7,7 @@
   "scripts": {
     "build": "pnpm --filter @onecell/edgejs run build && tsc",
     "dev": "tsx src/index.ts",
+    "dev:debug": "DEBUG=nanoclaw:edge tsx src/index.ts",
     "dev:claw": "tsx src/index.ts --config nanoclaw.config.claw.json",
     "start": "node dist/index.js",
     "start:claw": "node dist/index.js --config nanoclaw.config.claw.json",

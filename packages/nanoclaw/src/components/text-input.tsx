@@ -156,7 +156,7 @@ export function TextInput({
 
   return (
     <Box>
-      <Text color={theme.text}>{busy ? '…' : '›'} </Text>
+      <Text color={theme.text} dimColor={busy}>{'❯'} </Text>
       {busy ? (
         <Text color={theme.subtle}>{placeholder}</Text>
       ) : value.length === 0 ? (

@@ -15,7 +15,7 @@ interface TranscriptProps {
 function UserLine({ text }: { text: string }) {
   return (
     <Box>
-      <Text backgroundColor={theme.brand} color="black">{'>'}</Text>
+      <Text color={theme.brand}>{'❯'}</Text>
       <Text> </Text>
       <Text color={theme.text}>{text}</Text>
     </Box>
@@ -326,7 +326,7 @@ export function Transcript({ entries, width, maxLines = 12, verbose = false }: T
       if (entry.role === 'user') {
         if (lines.length > 0) {
           lines.push(
-            <Text key={`sep-${lines.length}`} color={theme.subtle}>{'\u2500'.repeat(Math.max(1, (width ?? 100) - 2))}</Text>,
+            <Box key={`sep-${lines.length}`} height={1} />,
           );
         }
         lines.push(<UserLine key={lines.length} text={entry.text} />);

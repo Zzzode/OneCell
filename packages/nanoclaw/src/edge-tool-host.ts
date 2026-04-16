@@ -895,10 +895,7 @@ export async function executeEdgeTool(
       }
 
       return {
-        result:
-          result === undefined
-            ? { ok: true, value: null }
-            : { ok: true, value: result },
+        result: result ?? null,
         outputText:
           typeof result === 'string' ? result : JSON.stringify(result ?? null),
         workspaceOverlayDigest: 'workspace:unchanged',

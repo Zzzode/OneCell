@@ -286,10 +286,15 @@ function recordTerminalTranscript(
   const normalized = text.trim();
   if (!normalized) return;
   const at = new Date().toISOString();
-  const previous = terminalTranscript[terminalTranscript.length - 1];
-  if (previous && previous.role === role && previous.text === normalized) {
-    previous.at = at;
-    return;
+  // Check recent entries for duplicates, not just the last one.
+  // System/tool events may be interleaved between duplicate submissions.
+  const lookback = Math.min(terminalTranscript.length, 8);
+  for (let i = terminalTranscript.length - 1; i >= terminalTranscript.length - lookback; i--) {
+    const entry = terminalTranscript[i]!;
+    if (entry.role === role && entry.text === normalized) {
+      entry.at = at;
+      return;
+    }
   }
   terminalTranscript.push({ at, role, text: normalized });
   if (terminalTranscript.length > TERMINAL_TRANSCRIPT_LIMIT) {
@@ -603,7 +608,7 @@ class TerminalChannel implements Channel {
       true,
     );
 
-    this.renderScreen(true);
+    this.renderScreen();
   }
 
   private handleFocusCycle(direction: 1 | -1): void {
@@ -618,7 +623,7 @@ class TerminalChannel implements Channel {
 
   private async handleInterrupt(): Promise<void> {
     if (this.dismissHighestPrioritySurface()) {
-      this.renderScreen(true);
+      this.renderScreen();
       return;
     }
     this.latestSystemEvent = '已请求打断当前执行';
@@ -656,11 +661,16 @@ class TerminalChannel implements Channel {
       return;
     }
 
+    if (this.typingByJid.has(TERMINAL_GROUP_JID)) {
+      return;
+    }
+
     const now = new Date().toISOString();
     this.lastAssistantMessageByJid.delete(TERMINAL_GROUP_JID);
     this.closeOverlay();
     recordTerminalTranscript('user', text);
-    this.renderScreen(true);
+    // Use immediate render for user input to show it right away
+    this.renderScreen();
     this.opts.onMessage(TERMINAL_GROUP_JID, {
       id: `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
       chat_jid: TERMINAL_GROUP_JID,
@@ -764,7 +774,7 @@ class TerminalChannel implements Channel {
       }
       case '/clear':
         this.closeAuxiliarySurfaces();
-        this.renderScreen(true);
+        this.renderScreen();
         return true;
       case '/retry-container':
         await this.handleRetryContainerCommand();
@@ -821,14 +831,15 @@ class TerminalChannel implements Channel {
     );
   }
 
-  private renderScreen(_force = false): void {
+  private buildRenderProps(): Parameters<typeof TerminalApp>[0] {
     const busy = this.typingByJid.has(TERMINAL_GROUP_JID);
     const width = process.stdout.columns ?? 100;
-    const props = {
+    return {
       backend: TERMINAL_GROUP_EXECUTION_MODE,
       busy,
       verbose: this.verbose,
       width,
+      height: process.stdout.rows,
       latestSystemEvent: this.latestSystemEvent,
       latestAssistantMessage: this.latestAssistantMessage,
       recentSystemEvents: terminalEventTail(4),
@@ -840,8 +851,12 @@ class TerminalChannel implements Channel {
       onEscape: () => { void this.handleInterrupt() },
       onShiftUp: () => { this.handleFocusCycle(-1) },
       onShiftDown: () => { this.handleFocusCycle(1) },
-      onCtrlO: () => { this.verbose = !this.verbose; this.renderScreen(true); },
+      onCtrlO: () => { this.verbose = !this.verbose; this.renderScreen(); },
     };
+  }
+
+  private renderScreen(): void {
+    const props = this.buildRenderProps();
 
     if (this.inkInstance) {
       this.inkInstance.rerender(<TerminalApp {...props} />);
@@ -855,17 +870,17 @@ class TerminalChannel implements Channel {
 
   private openSidePanel(tab: TerminalSidePanelTab, body: string): void {
     this.sidePanel = { isOpen: true, tab, body };
-    this.renderScreen(true);
+    this.renderScreen();
   }
 
   private openDrawer(tab: TerminalDrawerTab, body: string): void {
     this.drawer = { isOpen: true, tab, body };
-    this.renderScreen(true);
+    this.renderScreen();
   }
 
   private openOverlay(kind: TerminalOverlayKind, body: string): void {
     this.overlay = { kind, body };
-    this.renderScreen(true);
+    this.renderScreen();
   }
 
   private closeOverlay(): void {
@@ -915,7 +930,7 @@ class TerminalChannel implements Channel {
     if (this.typingByJid.has(jid)) {
       this.typingByJid.delete(jid);
     }
-    this.renderScreen(true);
+    this.renderScreen();
   }
 
   sendSystemEvent(jid: string, text: string): void {
@@ -926,7 +941,7 @@ class TerminalChannel implements Channel {
     recordTerminalEvent(normalized);
     recordTerminalTranscript('system', normalized);
     this.latestSystemEvent = normalized;
-    this.renderScreen(true);
+    this.renderScreen();
   }
 
   async setTyping(jid: string, isTyping: boolean): Promise<void> {
@@ -936,13 +951,13 @@ class TerminalChannel implements Channel {
       if (this.typingByJid.has(jid)) return;
       this.typingByJid.add(jid);
       this.latestSystemEvent = '处理中…';
-      this.renderScreen(true);
+      this.renderScreen();
       return;
     }
 
     if (!this.typingByJid.has(jid)) return;
     this.typingByJid.delete(jid);
-    this.renderScreen(true);
+    this.renderScreen();
   }
 
   isConnected(): boolean {
@@ -988,13 +1003,13 @@ export function emitTerminalToolEvent(
   const normalized = text.trim();
   recordTerminalEvent(normalized || `tool: ${toolData.tool}`);
   const entry = recordTerminalToolEntry(normalized, toolData);
-  activeTerminalChannel['renderScreen'](true);
+  activeTerminalChannel['renderScreen']();
   return entry;
 }
 
 export function emitTerminalRefresh(jid: string): void {
   if (!activeTerminalChannel?.ownsJid(jid)) return;
-  activeTerminalChannel['renderScreen'](true);
+  activeTerminalChannel['renderScreen']();
 }
 
 registerChannel('terminal', (opts) => {
