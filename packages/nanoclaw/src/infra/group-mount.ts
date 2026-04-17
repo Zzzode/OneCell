@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { ASSISTANT_NAME, GROUPS_DIR } from '../config/config.js';
+
 import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 

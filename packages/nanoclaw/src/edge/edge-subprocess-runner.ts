@@ -350,7 +350,7 @@ class EdgeSubprocessRunner implements EdgeRunner {
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
-          throw new Error(`Invalid edge runner event JSON: ${message}`);
+          throw new Error(`Invalid edge runner event JSON: ${message}`, { cause: error });
         }
 
         yield event;

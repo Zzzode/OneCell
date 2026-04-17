@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type React from 'react';
 

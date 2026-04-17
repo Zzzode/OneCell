@@ -9,7 +9,6 @@ import { DATA_DIR } from '../config/config.js';
 import { logger } from '../infra/logger.js';
 import type { RegisteredGroup } from '../types.js';
 
-import { getDb } from './connection.js';
 import { setRegisteredGroup } from './registered-groups.js';
 import { setRouterState } from './router-state.js';
 import { setSession } from './sessions.js';

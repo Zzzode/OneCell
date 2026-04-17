@@ -4,7 +4,7 @@ import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from '../config/config.js';
-import { createTask, deleteTask, getTaskById, updateTask } from '../db.js';
+import { createTask, getTaskById, updateTask } from '../db.js';
 import {
   buildGroupsSnapshotPayload,
   type GroupSnapshot,

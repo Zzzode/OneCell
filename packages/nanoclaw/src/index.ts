@@ -2,18 +2,11 @@ import { deploymentRequiresContainerRuntime } from './routing/backend-selection.
 import { edgeBackend } from './backends/edge-backend.js';
 import { heavyWorker } from './backends/container-backend.js';
 import {
-  ASSISTANT_NAME,
   DEFAULT_EXECUTION_MODE,
-  DEFAULT_TRIGGER,
-  getTriggerPattern,
-  IDLE_TIMEOUT,
-  MAX_MESSAGES_PER_PROMPT,
-  POLL_INTERVAL,
   TERMINAL_CHANNEL_ENABLED,
   TERMINAL_GROUP_FOLDER,
   TERMINAL_GROUP_JID,
   TERMINAL_RESET_SESSION_ON_START,
-  TIMEZONE,
 } from './config/config.js';
 import { initConfig } from './config/config.js';
 import {
@@ -36,10 +29,7 @@ import {
 import {
   deleteSession,
   getAllTasks,
-  getMessagesSince,
-  getNewMessages,
   initDatabase,
-  listTaskGraphs,
   setSession,
   storeChatMetadata,
   storeMessage,
@@ -50,14 +40,11 @@ import { recordBotMessage } from './infra/bot-message-recorder.js';
 import { startIpcWatcher } from './infra/ipc.js';
 import {
   findChannel,
-  formatMessages,
   formatOutbound,
 } from './routing/router.js';
 import {
   initRouterState,
   loadState,
-  saveState,
-  getOrRecoverCursor,
 } from './routing/router-state.js';
 import {
   initMessageProcessor,
@@ -72,7 +59,6 @@ import {
 } from './infra/remote-control.js';
 import {
   isSenderAllowed,
-  isTriggerAllowed,
   loadSenderAllowlist,
   shouldDropMessage,
 } from './infra/sender-allowlist.js';
@@ -110,11 +96,11 @@ import { createAgentExecutor } from './framework/agent-executor.js';
 export { escapeXml, formatMessages } from './routing/router.js';
 export { getAvailableGroups } from './infra/group-registration.js';
 
-let lastTimestamp = '';
-let sessions: Record<string, string> = {};
-let registeredGroups: Record<string, RegisteredGroup> = {};
-let lastAgentTimestamp: Record<string, string> = {};
-let messageLoopRunning = false;
+const lastTimestamp = '';
+const sessions: Record<string, string> = {};
+const registeredGroups: Record<string, RegisteredGroup> = {};
+const lastAgentTimestamp: Record<string, string> = {};
+const messageLoopRunning = false;
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();

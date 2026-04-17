@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
@@ -6,7 +6,7 @@ import type {
   ExecutionEvent,
   ExecutionRequest,
 } from '../framework/agent-backend.js';
-import { localEdgeRunner, resolveDirectToolInvocation } from './edge-runner.js';
+import { localEdgeRunner } from './edge-runner.js';
 import { GROUPS_DIR } from '../config/config.js';
 import { ensureWorkspaceVersion } from '../infra/workspace-service.js';
 

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   loadConfigFile,
@@ -10,8 +10,6 @@ import {
   renderStartupConfigError,
   resolveConfigPath,
 } from './config-loader.js';
-
-import type { ResolvedNanoclawConfig } from './nanoclaw-config.js';
 
 const tempFiles: string[] = [];
 

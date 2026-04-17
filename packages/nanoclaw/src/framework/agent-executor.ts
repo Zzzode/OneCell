@@ -142,7 +142,7 @@ export function createAgentExecutor(deps: AgentExecutorDeps) {
       graph,
       execution,
       executionContext,
-      baseWorkspaceVersion,
+      baseWorkspaceVersion: _baseWorkspaceVersion,
     } = frameworkRun;
     const usesHeavyWorker = placement.workerClass === 'heavy';
     const backend = frameworkWorkers[placement.backendId];
@@ -201,8 +201,8 @@ export function createAgentExecutor(deps: AgentExecutorDeps) {
 
     try {
       executionId = execution.executionId;
-      let effectiveExecutionId = execution.executionId;
-      let effectiveBackendId = placement.backendId;
+      const effectiveExecutionId = execution.executionId;
+      const effectiveBackendId = placement.backendId;
 
       // Always stream through the wrapper so execution heartbeats and
       // session compatibility updates happen even when the caller does not
@@ -267,7 +267,7 @@ export function createAgentExecutor(deps: AgentExecutorDeps) {
         return teamOrchestrationResult.status;
       }
 
-      let output = await backend.run(
+      const output = await backend.run(
         group,
         {
           prompt,
@@ -290,7 +290,7 @@ export function createAgentExecutor(deps: AgentExecutorDeps) {
         wrappedOnOutput,
       );
 
-      const recovery = classifyRuntimeRecovery({
+      const _recovery = classifyRuntimeRecovery({
         error: streamedError || output.error || '',
         workerClass: placement.workerClass,
         fallbackEligible: placement.fallbackEligible,
