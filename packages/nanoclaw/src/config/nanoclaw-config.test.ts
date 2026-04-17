@@ -6,9 +6,7 @@ import {
   validateConfigFile,
 } from './nanoclaw-config.js';
 
-import type {
-  NanoclawConfigFile,
-} from './nanoclaw-config.js';
+import type { NanoclawConfigFile } from './nanoclaw-config.js';
 
 describe('expandEnvVars', () => {
   it('replaces ${VAR} with the environment variable value', () => {

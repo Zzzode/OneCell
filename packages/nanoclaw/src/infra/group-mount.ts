@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 
-
 import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 
