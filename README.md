@@ -157,35 +157,6 @@ pnpm typecheck                   # Type-check all packages
 cmake --preset release && cmake --build --preset release && ctest --preset release
 ```
 
-## Architecture
-
-```
-OneCell
-├── CMakeLists.txt            # CMake build (all targets)
-├── src/                      # C++ runtime core
-├── lib/                      # JavaScript standard library
-├── deps/                     # Vendored libraries (V8, libuv, OpenSSL...)
-├── napi/                     # N-API abstraction layer (git submodule)
-├── wasix/                    # WASIX build support & toolchain files
-├── scripts/                  # Build and test scripts
-├── build-release/            # Native build output (edge binary)
-├── build-wasix/              # WASM build output (edgejs.wasm, for --safe)
-├── ARCHITECTURE.md           # Runtime architecture doc
-│
-├── packages/edgejs/          # npm wrapper (@onecell/edgejs)
-│   ├── package.json
-│   ├── runtime-api.js        #   Resolves binaryPath from build output
-│   └── runtime-api.d.ts
-│
-└── packages/nanoclaw/        # AI assistant (@onecell/nanoclaw)
-    ├── src/                  #   Core orchestration, channels, IPC
-    ├── container/            #   Agent container definitions
-    ├── setup/                #   First-time setup module
-    └── docs/                 #   Documentation
-```
-
-OneCell Assistant runs Claude-powered agents inside OneCell Runtime sandboxes, providing OS-level isolation for each conversation group.
-
 ## Documentation
 
 - [OneCell Runtime Architecture](ARCHITECTURE.md)
