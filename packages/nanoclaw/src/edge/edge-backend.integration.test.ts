@@ -20,7 +20,19 @@ const group: RegisteredGroup = {
   executionMode: 'edge',
 };
 
-describe('edge backend integration', () => {
+// Skip integration tests that require a real edgejs binary
+// when running in CI without a native build.
+const hasEdgejsBinary = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { binaryPath } = require('@onecell/edgejs') as { binaryPath: string };
+    return fs.existsSync(binaryPath);
+  } catch {
+    return false;
+  }
+})();
+
+describe.skipIf(!hasEdgejsBinary)('edge backend integration', () => {
   let tempRoot: string;
 
   beforeEach(() => {
