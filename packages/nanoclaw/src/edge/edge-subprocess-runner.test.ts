@@ -109,7 +109,8 @@ describe('EdgeSubprocessRunner', () => {
       vi.resetModules();
 
       // Write a config with edge.safe = true
-      const { initConfig: freshInitConfig } = await import('../config/config.js');
+      const { initConfig: freshInitConfig } =
+        await import('../config/config.js');
       const { writeTestConfigFile } = await import('../test-config.js');
       freshInitConfig(
         writeTestConfigFile({

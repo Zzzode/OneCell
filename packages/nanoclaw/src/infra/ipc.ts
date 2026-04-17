@@ -323,7 +323,8 @@ export async function processTaskIpc(
       if (data.taskId) {
         const task = getTaskById(data.taskId);
         if (task && (isMain || task.group_folder === sourceGroup)) {
-          const { deleteScheduledTask } = await import('../tasks/task-control.js');
+          const { deleteScheduledTask } =
+            await import('../tasks/task-control.js');
           deleteScheduledTask(data.taskId);
           logger.info(
             { taskId: data.taskId, sourceGroup },

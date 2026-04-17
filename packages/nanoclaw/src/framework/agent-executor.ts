@@ -5,11 +5,7 @@ import {
   SHADOW_EXECUTION_MODE,
   TERMINAL_GROUP_JID,
 } from '../config/config.js';
-import {
-  deleteSession,
-  getAllTasks,
-  setSession,
-} from '../db.js';
+import { deleteSession, getAllTasks, setSession } from '../db.js';
 import {
   commitExecution,
   completeExecution,
@@ -372,7 +368,9 @@ export function createAgentExecutor(deps: AgentExecutorDeps) {
         const isStaleSession =
           sessionId &&
           error &&
-          /no conversation found|ENOENT.*\.jsonl|session.*not found/i.test(error);
+          /no conversation found|ENOENT.*\.jsonl|session.*not found/i.test(
+            error,
+          );
 
         if (isStaleSession) {
           logger.warn(

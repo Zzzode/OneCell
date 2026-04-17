@@ -669,7 +669,8 @@ export async function executeEdgeTool(
           ) {
             throw new Error(`Task not visible to group: ${taskId}`);
           }
-          const { deleteScheduledTask } = await import('../tasks/task-control.js');
+          const { deleteScheduledTask } =
+            await import('../tasks/task-control.js');
           deleteScheduledTask(taskId);
           return { taskId, deleted: true };
         },

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { AgentBackend, AgentRunOutput } from '../framework/agent-backend.js';
+import type {
+  AgentBackend,
+  AgentRunOutput,
+} from '../framework/agent-backend.js';
 import { logger } from '../infra/logger.js';
 import {
   resolveShadowExecutionMode,
