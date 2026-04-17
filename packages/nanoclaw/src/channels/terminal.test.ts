@@ -56,7 +56,7 @@ vi.mock('ink', async () => {
   };
 });
 
-vi.mock('../config.js', () => ({
+vi.mock('../config/config.js', () => ({
   ASSISTANT_NAME: 'Andy',
   EDGE_ANTHROPIC_MODEL: 'claude-sonnet-4',
   EDGE_ENABLE_TOOLS: true,
@@ -77,6 +77,8 @@ vi.mock('../db.js', () => ({
   clearConversationMessages: vi.fn(),
   getAllTasks: vi.fn(),
   getTaskById: vi.fn(),
+  getExecutionState: vi.fn(),
+  getWorkspaceCommit: vi.fn(),
   listExecutionStatesForTaskNode: vi.fn(),
   listTaskGraphs: vi.fn(),
   listTaskNodes: vi.fn(),
@@ -84,17 +86,17 @@ vi.mock('../db.js', () => ({
   updateTask: vi.fn(),
 }));
 
-vi.mock('../task-control.js', () => ({
+vi.mock('../tasks/task-control.js', () => ({
   deleteScheduledTask: vi.fn(),
 }));
 
-vi.mock('../timezone.js', () => ({
+vi.mock('../infra/timezone.js', () => ({
   formatDisplayDateTime: vi.fn((value: string, timezone: string) => {
     return `${value} @ ${timezone}`;
   }),
 }));
 
-vi.mock('../framework-observability.js', () => ({
+vi.mock('../framework/framework-observability.js', () => ({
   buildFrameworkObservabilitySnapshot: vi.fn(() => ({
     scope: { kind: 'group', id: 'terminal_canary' },
     generatedAt: '2026-04-05T12:00:00.000Z',
