@@ -50,7 +50,7 @@ jobs:
         run: cmake --build --preset release
 
       - name: Run release tests
-        run: ctest --preset release
+        run: ctest --preset release --timeout 120
 
       - name: Smoke test runtime version
         run: ./build-release/edge --version
@@ -84,7 +84,7 @@ jobs:
         run: cmake --build --preset release
 
       - name: Run release tests
-        run: ctest --preset release
+        run: ctest --preset release --timeout 120
 
       - name: Smoke test runtime version
         run: ./build-release/edge --version
@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build libicu-dev
+          sudo apt-get install -y ninja-build libicu-dev llvm-dev
 
       - name: Configure release build
         run: cmake --preset release
