@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import React from 'react'
 import { render } from 'ink'
 
@@ -82,6 +83,10 @@ type LocalCommand =
   | '/quit';
 
 let activeTerminalChannel: TerminalChannel | null = null;
+
+function setActiveTerminalChannel(channel: TerminalChannel): void {
+  activeTerminalChannel = channel;
+}
 let terminalEvents: Array<{ at: string; text: string }> = [];
 let terminalReplies: Array<{ at: string; text: string }> = [];
 let terminalTranscript: TerminalPanelTranscriptEntry[] = [];
@@ -597,7 +602,7 @@ class TerminalChannel implements Channel {
 
   async connect(): Promise<void> {
     this.connected = true;
-    activeTerminalChannel = this;
+    setActiveTerminalChannel(this);
     silenceLogger();
     clearConversationMessages(TERMINAL_GROUP_JID);
     this.opts.onChatMetadata(

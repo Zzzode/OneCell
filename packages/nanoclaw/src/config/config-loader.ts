@@ -57,7 +57,7 @@ export function loadConfigFile(configPath: string): ResolvedNanoclawConfig {
       'code' in err &&
       (err as NodeJS.ErrnoException).code === 'ENOENT'
     ) {
-      throw new Error(`Config file not found: ${configPath}`);
+      throw new Error(`Config file not found: ${configPath}`, { cause: err });
     }
     throw err;
   }
@@ -65,8 +65,8 @@ export function loadConfigFile(configPath: string): ResolvedNanoclawConfig {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch {
-    throw new Error(`Failed to parse config file as JSON: ${configPath}`);
+  } catch (parseError: unknown) {
+    throw new Error(`Failed to parse config file as JSON: ${configPath}`, { cause: parseError });
   }
 
   return resolveConfig(parsed as NanoclawConfigFile);

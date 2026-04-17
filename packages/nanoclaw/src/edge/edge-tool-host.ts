@@ -360,7 +360,7 @@ function applyWorkspacePatch(
 
 async function runIdempotentOperation<T>(
   _request: ExecutionRequest,
-  tool: string,
+  _tool: string,
   operationId: string | undefined,
   fn: () => Promise<T> | T,
 ): Promise<T> {
@@ -890,6 +890,7 @@ export async function executeEdgeTool(
             `import() is restricted in edge mode. ` +
               `Use sdk.import('module') for whitelisted module access. ` +
               `Original error: ${message}`,
+            { cause: execError },
           );
         }
         throw execError;

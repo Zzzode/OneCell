@@ -59,7 +59,9 @@ export function cleanupTestConfig(): void {
   if (_testConfigPath) {
     try {
       fs.unlinkSync(_testConfigPath);
-    } catch {}
+    } catch {
+      /* intentional: test config cleanup is best-effort */
+    }
     _testConfigPath = null;
   }
 }

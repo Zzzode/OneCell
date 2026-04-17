@@ -650,7 +650,7 @@ describe('edgeBackend', () => {
       });
 
       const backend = createEdgeBackend({
-        async *runTurn(_request, options) {
+        async runTurn(_request, options) {
           await new Promise<void>((resolve) => {
             options?.signal?.addEventListener('abort', () => resolve(), {
               once: true,

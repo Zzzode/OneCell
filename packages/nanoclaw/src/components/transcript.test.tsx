@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import { describe, it, expect } from 'vitest'
 import { renderToString } from 'ink'
 import React from 'react'

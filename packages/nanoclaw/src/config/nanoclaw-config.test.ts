@@ -8,9 +8,6 @@ import {
 
 import type {
   NanoclawConfigFile,
-  Profile,
-  ResolvedNanoclawConfig,
-  ResolvedProvider,
 } from './nanoclaw-config.js';
 
 describe('expandEnvVars', () => {
