@@ -6,7 +6,10 @@ import {
 } from '../edge/edge-capabilities.js';
 import { FRAMEWORK_POLICY_VERSION } from '../framework/framework-policy.js';
 import { getAppConfig } from '../config/config.js';
-import type { AgentBackendId, ExecutionMode } from '../framework/execution-mode.js';
+import type {
+  AgentBackendId,
+  ExecutionMode,
+} from '../framework/execution-mode.js';
 import type { RegisteredGroup } from '../types.js';
 
 /** Safely read edge.disableFallback; returns false when config is not yet initialized. */

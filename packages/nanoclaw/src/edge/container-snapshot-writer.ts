@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 
-import { GroupsSnapshotPayload, TaskSnapshot } from '../framework/execution-snapshots.js';
+import {
+  GroupsSnapshotPayload,
+  TaskSnapshot,
+} from '../framework/execution-snapshots.js';
 import {
   buildFrameworkObservabilitySnapshot,
   type FrameworkObservabilitySnapshot,

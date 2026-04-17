@@ -44,13 +44,15 @@ import {
   storeChatMetadata,
   storeMessage,
 } from './db.js';
-import {
-  buildTaskSnapshots,
-} from './framework/execution-snapshots.js';
+import { buildTaskSnapshots } from './framework/execution-snapshots.js';
 import { GroupQueue } from './infra/group-queue.js';
 import { recordBotMessage } from './infra/bot-message-recorder.js';
 import { startIpcWatcher } from './infra/ipc.js';
-import { findChannel, formatMessages, formatOutbound } from './routing/router.js';
+import {
+  findChannel,
+  formatMessages,
+  formatOutbound,
+} from './routing/router.js';
 import {
   initRouterState,
   loadState,
@@ -116,7 +118,13 @@ let messageLoopRunning = false;
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
-initRouterState({ lastTimestamp, sessions, registeredGroups, lastAgentTimestamp, messageLoopRunning });
+initRouterState({
+  lastTimestamp,
+  sessions,
+  registeredGroups,
+  lastAgentTimestamp,
+  messageLoopRunning,
+});
 initTerminalRuntimeManager({ sessions, queue });
 initGroupRegistration({ registeredGroups });
 const frameworkWorkers: FrameworkWorkerRegistry = createFrameworkWorkerRegistry(
@@ -126,8 +134,15 @@ const frameworkWorkers: FrameworkWorkerRegistry = createFrameworkWorkerRegistry(
   },
 );
 const { runAgent } = createAgentExecutor({ sessions, frameworkWorkers, queue });
-initMessageProcessor({ channels, registeredGroups, lastTimestamp, lastAgentTimestamp, messageLoopRunning, queue, runAgent });
-
+initMessageProcessor({
+  channels,
+  registeredGroups,
+  lastTimestamp,
+  lastAgentTimestamp,
+  messageLoopRunning,
+  queue,
+  runAgent,
+});
 
 /** @internal - exported for testing */
 export function _setRegisteredGroups(

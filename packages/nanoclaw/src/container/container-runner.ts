@@ -19,7 +19,10 @@ import {
   ONECLI_URL,
   TIMEZONE,
 } from '../config/config.js';
-import { resolveGroupFolderPath, resolveGroupIpcPath } from '../infra/group-folder.js';
+import {
+  resolveGroupFolderPath,
+  resolveGroupIpcPath,
+} from '../infra/group-folder.js';
 import { logger } from '../infra/logger.js';
 import {
   CONTAINER_RUNTIME_BIN,

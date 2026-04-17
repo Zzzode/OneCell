@@ -34,14 +34,13 @@ export function initGroupRegistration(deps: GroupRegistrationState): void {
 }
 
 /** @internal - update the registeredGroups reference (used by test helpers) */
-export function _setRegisteredGroupsRef(groups: Record<string, RegisteredGroup>): void {
+export function _setRegisteredGroupsRef(
+  groups: Record<string, RegisteredGroup>,
+): void {
   state.registeredGroups = groups;
 }
 
-export function ensureOneCLIAgent(
-  jid: string,
-  group: RegisteredGroup,
-): void {
+export function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
   if (group.isMain) return;
   const identifier = group.folder.toLowerCase().replace(/_/g, '-');
   onecli.ensureAgent({ name: group.name, identifier }).then(
@@ -60,10 +59,7 @@ export function ensureOneCLIAgent(
   );
 }
 
-export function registerGroup(
-  jid: string,
-  group: RegisteredGroup,
-): void {
+export function registerGroup(jid: string, group: RegisteredGroup): void {
   let groupDir: string;
   try {
     groupDir = resolveGroupFolderPath(group.folder);

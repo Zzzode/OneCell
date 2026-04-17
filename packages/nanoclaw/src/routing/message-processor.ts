@@ -17,10 +17,7 @@ import {
   loadSenderAllowlist,
 } from '../infra/sender-allowlist.js';
 import { findChannel, formatMessages } from './router.js';
-import {
-  getOrRecoverCursor,
-  saveState,
-} from './router-state.js';
+import { getOrRecoverCursor, saveState } from './router-state.js';
 import type { Channel, NewMessage, RegisteredGroup } from '../types.js';
 import type { GroupQueue } from '../infra/group-queue.js';
 
@@ -35,7 +32,9 @@ interface MessageProcessorState {
     group: RegisteredGroup,
     prompt: string,
     chatJid: string,
-    onOutput?: (output: import('../framework/agent-backend.js').AgentRunOutput) => Promise<void>,
+    onOutput?: (
+      output: import('../framework/agent-backend.js').AgentRunOutput,
+    ) => Promise<void>,
     override?: {
       executionMode?: 'edge' | 'container' | 'auto';
       retryOrigin?: 'explicit_container_retry';
@@ -119,37 +118,42 @@ export async function processGroupMessages(chatJid: string): Promise<boolean> {
   let outputSentToUser = false;
   let typingReleased = false;
 
-  const output = await state.runAgent(group, prompt, chatJid, async (result) => {
-    // Streaming output callback — called for each agent result
-    if (result.result) {
-      const raw =
-        typeof result.result === 'string'
-          ? result.result
-          : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
-      if (text) {
-        await channel.sendMessage(chatJid, text);
-        recordBotMessage(chatJid, text);
-        outputSentToUser = true;
-        if (!typingReleased) {
-          await channel.setTyping?.(chatJid, false);
-          typingReleased = true;
+  const output = await state.runAgent(
+    group,
+    prompt,
+    chatJid,
+    async (result) => {
+      // Streaming output callback — called for each agent result
+      if (result.result) {
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
+        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
+        if (text) {
+          await channel.sendMessage(chatJid, text);
+          recordBotMessage(chatJid, text);
+          outputSentToUser = true;
+          if (!typingReleased) {
+            await channel.setTyping?.(chatJid, false);
+            typingReleased = true;
+          }
         }
+        // Only reset idle timer on actual results, not session-update markers (result: null)
+        resetIdleTimer();
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
-      resetIdleTimer();
-    }
 
-    if (result.status === 'success') {
-      state.queue.notifyIdle(chatJid);
-    }
+      if (result.status === 'success') {
+        state.queue.notifyIdle(chatJid);
+      }
 
-    if (result.status === 'error') {
-      hadError = true;
-    }
-  });
+      if (result.status === 'error') {
+        hadError = true;
+      }
+    },
+  );
 
   if (!typingReleased) {
     await channel.setTyping?.(chatJid, false);
@@ -296,7 +300,8 @@ export function recoverPendingMessages(): void {
     );
     if (pending.length > 0) {
       if (TERMINAL_CHANNEL_ENABLED && chatJid === TERMINAL_GROUP_JID) {
-        state.lastAgentTimestamp[chatJid] = pending[pending.length - 1].timestamp;
+        state.lastAgentTimestamp[chatJid] =
+          pending[pending.length - 1].timestamp;
         saveState();
         logger.info(
           { group: group.name, pendingCount: pending.length },

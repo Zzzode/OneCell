@@ -6,7 +6,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import readline from 'readline';
 
-import type { ExecutionEvent, ExecutionRequest } from '../framework/agent-backend.js';
+import type {
+  ExecutionEvent,
+  ExecutionRequest,
+} from '../framework/agent-backend.js';
 import { EDGEJS_BIN, EDGE_RUNNER_MODE, EDGE_SAFE } from '../config/config.js';
 import type { EdgeRunnerProtocolMessage } from './edge-host-bridge.js';
 import type { EdgeRunner } from './edge-runner.js';

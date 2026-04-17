@@ -13,10 +13,7 @@ import { failRootTaskGraph } from '../tasks/task-graph-state.js';
 import { clearTerminalRetryState } from './terminal-retry.js';
 import { resetTerminalObservability } from './terminal-observability.js';
 import { logger } from '../infra/logger.js';
-import {
-  TERMINAL_GROUP_FOLDER,
-  TERMINAL_GROUP_JID,
-} from '../config/config.js';
+import { TERMINAL_GROUP_FOLDER, TERMINAL_GROUP_JID } from '../config/config.js';
 import type { GroupQueue } from '../infra/group-queue.js';
 
 interface TerminalRuntimeState {
@@ -26,15 +23,11 @@ interface TerminalRuntimeState {
 
 let state: TerminalRuntimeState;
 
-export function initTerminalRuntimeManager(
-  deps: TerminalRuntimeState,
-): void {
+export function initTerminalRuntimeManager(deps: TerminalRuntimeState): void {
   state = deps;
 }
 
-export function resetTerminalSession(
-  reason: 'startup' | 'command',
-): void {
+export function resetTerminalSession(reason: 'startup' | 'command'): void {
   delete state.sessions[TERMINAL_GROUP_FOLDER];
   deleteSession(TERMINAL_GROUP_FOLDER);
   clearTerminalRetryState();
@@ -45,10 +38,7 @@ export function resetTerminalSession(
   );
 }
 
-export function failTerminalTaskNodes(
-  graphId: string,
-  error: string,
-): number {
+export function failTerminalTaskNodes(graphId: string, error: string): number {
   const timestamp = new Date().toISOString();
   let failedCount = 0;
 
