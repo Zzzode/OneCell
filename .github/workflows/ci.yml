@@ -29,5 +29,10 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      - name: Build nanoclaw dist (test placeholder)
+        run: |
+          mkdir -p packages/nanoclaw/dist
+          touch packages/nanoclaw/dist/edge-runner-cli.js
+
       - name: Test nanoclaw
         run: pnpm --filter @onecell/nanoclaw run test
