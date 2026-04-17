@@ -9,6 +9,7 @@ on:
       - 'deps/**'
       - 'napi/**'
       - 'wasix/**'
+      - 'tests/**'
       - 'packages/edgejs/**'
       - 'CMakeLists.txt'
       - 'CMakePresets.json'
