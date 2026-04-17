@@ -594,6 +594,10 @@ int RunRawNodeTestScriptInSubprocess(const char* node_test_relative_path,
     if (unofficial_napi_create_env(8, &env, &scope) != napi_ok || env == nullptr) {
       _exit(70);
     }
+    if (!EdgeAttachEnvironmentForRuntime(env)) {
+      (void)unofficial_napi_release_env(scope);
+      _exit(70);
+    }
     std::string child_error;
     // Raw Node tests rely on libuv/event-loop turns (process exit checks,
     // IPC callbacks, mustCall verification). Run with loop support enabled in
@@ -606,6 +610,8 @@ int RunRawNodeTestScriptInSubprocess(const char* node_test_relative_path,
       (void)write(STDERR_FILENO, "\n", 1);
     }
     if (scope != nullptr) {
+      EdgeEnvironmentRunCleanup(env);
+      EdgeEnvironmentRunAtExitCallbacks(env);
       (void)unofficial_napi_release_env(scope);
     }
     _exit(child_exit);
