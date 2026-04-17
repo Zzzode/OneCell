@@ -1111,7 +1111,7 @@ add_custom_target(build-napi-wasmer-cli
 add_custom_target(test-wasix-napi-cli
   COMMAND "${EDGE_NAPI_WASMER_DIR}/target/debug/napi_wasmer"
           "${PROJECT_ROOT}/build-wasix/edgejs.wasm"
-          -e "console.log('hello world!');"
+          -e "console.log(42)"
   COMMENT "Smoke test: napi_wasmer with WASIX wasm"
 )
 
