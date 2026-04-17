@@ -1,5 +1,10 @@
-# nanoclaw-specific runtime data
+# Runtime data (only root-level, not src/data/)
+/data/
 groups/
-*.keys.json
-.tmp-*
+store/
+
+# Config (user-specific)
 nanoclaw.config.json
+
+# Debug logs
+.nanoclaw-debug.jsonl
