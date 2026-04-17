@@ -650,6 +650,7 @@ describe('edgeBackend', () => {
       });
 
       const backend = createEdgeBackend({
+        // eslint-disable-next-line require-yield
         async *runTurn(_request, options) {
           await new Promise<void>((resolve) => {
             options?.signal?.addEventListener('abort', () => resolve(), {
