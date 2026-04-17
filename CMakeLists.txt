@@ -1108,10 +1108,11 @@ add_custom_target(build-napi-wasmer-cli
 )
 
 # ── test-wasix-napi-cli ─────────────────────────────────────────────
+file(WRITE "${CMAKE_BINARY_DIR}/wasix_smoke.js" "console.log(42)\n")
 add_custom_target(test-wasix-napi-cli
   COMMAND "${EDGE_NAPI_WASMER_DIR}/target/debug/napi_wasmer"
           "${PROJECT_ROOT}/build-wasix/edgejs.wasm"
-          -e "console.log(42)"
+          "${CMAKE_BINARY_DIR}/wasix_smoke.js"
   COMMENT "Smoke test: napi_wasmer with WASIX wasm"
 )
 
