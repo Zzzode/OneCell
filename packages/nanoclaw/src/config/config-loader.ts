@@ -66,7 +66,9 @@ export function loadConfigFile(configPath: string): ResolvedNanoclawConfig {
   try {
     parsed = JSON.parse(raw);
   } catch (parseError: unknown) {
-    throw new Error(`Failed to parse config file as JSON: ${configPath}`, { cause: parseError });
+    throw new Error(`Failed to parse config file as JSON: ${configPath}`, {
+      cause: parseError,
+    });
   }
 
   return resolveConfig(parsed as NanoclawConfigFile);

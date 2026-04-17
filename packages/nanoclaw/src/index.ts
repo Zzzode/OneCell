@@ -38,14 +38,8 @@ import { buildTaskSnapshots } from './framework/execution-snapshots.js';
 import { GroupQueue } from './infra/group-queue.js';
 import { recordBotMessage } from './infra/bot-message-recorder.js';
 import { startIpcWatcher } from './infra/ipc.js';
-import {
-  findChannel,
-  formatOutbound,
-} from './routing/router.js';
-import {
-  initRouterState,
-  loadState,
-} from './routing/router-state.js';
+import { findChannel, formatOutbound } from './routing/router.js';
+import { initRouterState, loadState } from './routing/router-state.js';
 import {
   initMessageProcessor,
   processGroupMessages,
