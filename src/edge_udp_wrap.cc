@@ -781,10 +781,7 @@ napi_value SendWrapCtor(napi_env env, napi_callback_info info) {
   napi_get_cb_info(env, info, &argc, nullptr, &self, nullptr);
   auto* wrap = new SendWrap();
   wrap->env = env;
-  wrap->async_id = EdgeAsyncWrapNextId(env);
   napi_wrap(env, self, wrap, SendWrapFinalize, nullptr, &wrap->wrapper_ref);
-  EdgeAsyncWrapEmitInit(
-      env, wrap->async_id, wrap->provider_type, EdgeAsyncWrapExecutionAsyncId(env), self);
   return self;
 }
 
