@@ -446,7 +446,7 @@ napi_value AsyncWrapQueueDestroyAsyncId(napi_env env, napi_callback_info info) {
   if (argc >= 1 && argv[0] != nullptr) {
     napi_get_value_double(env, argv[0], &async_id);
   }
-  QueueDestroyHookForAsyncId(env, async_id);
+  EmitDestroyHookForAsyncId(env, async_id);
   return Undefined(env);
 }
 
