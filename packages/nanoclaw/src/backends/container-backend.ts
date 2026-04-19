@@ -3,11 +3,11 @@ import {
   AgentRunInput,
   AgentRunOutput,
   ExecutionStartedCallback,
-} from '../agent-backend.js';
-import { ensureContainerRuntimeRunning } from '../container-runtime.js';
-import type { FrameworkWorker } from '../framework-worker.js';
-import { PLANNED_HEAVY_RUNTIME_SPECIALIZATIONS } from '../framework-policy.js';
-import { runContainerAgent } from '../container-runner.js';
+} from '../framework/agent-backend.js';
+import { ensureContainerRuntimeRunning } from '../container/container-runtime.js';
+import type { FrameworkWorker } from '../framework/framework-worker.js';
+import { PLANNED_HEAVY_RUNTIME_SPECIALIZATIONS } from '../framework/framework-policy.js';
+import { runContainerAgent } from '../container/container-runner.js';
 import { RegisteredGroup } from '../types.js';
 
 class HeavyWorker implements FrameworkWorker {

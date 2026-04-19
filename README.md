@@ -44,20 +44,94 @@ A personal AI assistant that runs Claude agents in isolated containers. Supports
 
 ### Prerequisites
 
-- Node.js >= 20
-- [pnpm](https://pnpm.io) >= 9
-- CMake >= 3.20 (for building the runtime)
+- macOS (arm64) or Linux (x86_64 / arm64)
+- Node.js >= 20, [pnpm](https://pnpm.io) >= 9
+- CMake >= 3.20, C++20 compiler (Clang 15+ / GCC 12+)
+- Ninja (`brew install ninja` or `apt install ninja-build`)
+- [Rust](https://rustup.rs) (for the wasix toolchain, needed by `--safe` mode)
 
 ### Install & Build
 
 ```bash
-git clone https://github.com/Zzzode/onecell.git
+git clone --recurse-submodules https://github.com/Zzzode/onecell.git
 cd onecell
 pnpm install
-pnpm build:edgejs     # Build the runtime (CMake)
-pnpm build:nanoclaw   # Build the assistant (TypeScript)
-pnpm test
+pnpm build            # Build all packages
 ```
+
+Or build individually:
+
+```bash
+pnpm build:edgejs     # Native runtime only (CMake)
+pnpm build:nanoclaw   # Runtime + TypeScript (includes build:edgejs)
+```
+
+### Running
+
+```bash
+pnpm dev              # Start nanoclaw in dev mode (tsx hot-reload)
+pnpm start            # Start nanoclaw from built dist
+```
+
+These are root-level convenience scripts — equivalent to `pnpm --filter @onecell/nanoclaw run dev`.
+
+nanoclaw spawns an edgejs subprocess for each agent turn (controlled by `edgeRunnerMode` in `nanoclaw.config.json`). Whether that subprocess runs in sandboxed mode is controlled by `edge.safe` in the config:
+
+```json
+{
+  "edge": {
+    "safe": true
+  }
+}
+```
+
+| `edge.safe` | `build-wasix/edgejs.wasm` exists? | edgejs args | Meaning |
+|---|---|---|---|
+| `false` (default) | — | `edge dist/edge-runner-cli.js` | Built-in V8, no sandbox |
+| `true` | Yes | `edge --safe --wasmer-package build-wasix/edgejs.wasm dist/edge-runner-cli.js` | Sandboxed via WASM |
+| `true` | No | — | Error: build the artifact first |
+
+`pnpm dev` and `pnpm start` behave identically in both cases — `edge.safe` in the config is the only control.
+
+### Enabling --safe Mode (WASM Sandbox)
+
+1. Set `edge.safe: true` in `nanoclaw.config.json`:
+
+```json
+{
+  "edge": {
+    "provider": "anthropic",
+    "safe": true
+  }
+}
+```
+
+2. Build the WASM artifact (one-time setup):
+
+```bash
+# 1. Install the wasix cross-compiler
+cargo install wasixcc
+sudo wasixccenv install-executables /usr/local/bin
+
+# 2. Download LLVM + sysroot (one-time, see packages/edgejs/README.md for details)
+gh release download 21.1.203 --repo wasix-org/llvm-project \
+  --pattern "LLVM-MacOS-aarch64.tar.gz" -D ~/.wasixcc/llvm
+cd ~/.wasixcc/llvm && tar xzf LLVM-MacOS-aarch64.tar.gz && cd -
+
+gh release download v2026-02-16.1 --repo wasix-org/wasix-libc -D ~/.wasixcc/sysroot
+cd ~/.wasixcc/sysroot && for f in sysroot*.tar.gz; do d="${f%.tar.gz}"; mkdir -p "$d" && tar xzf "$f" -C "$d"; done && cd -
+
+# 3. Build the WASM artifact (~5-10 min)
+bash wasix/build-wasix.sh
+# Output: build-wasix/edgejs.wasm
+
+# 4. Rebuild nanoclaw
+pnpm build:nanoclaw
+```
+
+If `edge.safe: true` is set but `build-wasix/edgejs.wasm` is missing, nanoclaw will print an error explaining how to build it.
+
+> See [packages/nanoclaw/README.md](packages/nanoclaw/README.md) for the full step-by-step guide including sysroot setup details.
 
 ### Quick Start with OneCell Assistant
 
@@ -67,32 +141,21 @@ claude                # Launch Claude Code
 /setup                # Guided setup
 ```
 
-## Architecture
+### Common Commands
 
-```
-OneCell
-├── CMakeLists.txt            # CMake build (all targets)
-├── src/                      # C++ runtime core
-├── lib/                      # JavaScript standard library
-├── deps/                     # Vendored libraries (V8, libuv, OpenSSL...)
-├── napi/                     # N-API abstraction layer (git submodule)
-├── wasix/                    # WASIX build support
-├── scripts/                  # Build and test scripts
-├── ARCHITECTURE.md           # Runtime architecture doc
-│
-├── packages/edgejs/          # npm wrapper (@onecell/edgejs)
-│   ├── package.json
-│   ├── runtime-api.js
-│   └── runtime-api.d.ts
-│
-└── packages/nanoclaw/        # AI assistant (@onecell/nanoclaw)
-    ├── src/                  #   Core orchestration, channels, IPC
-    ├── container/            #   Agent container definitions
-    ├── setup/                #   First-time setup module
-    └── docs/                 #   Documentation
-```
+```bash
+pnpm build                       # Build everything
+pnpm build:edgejs                # Build native runtime
+pnpm build:nanoclaw              # Build runtime + TypeScript
+pnpm dev                         # Dev mode (tsx hot-reload)
+pnpm start                       # Run from dist
+pnpm test                        # Run all package tests
+pnpm lint                        # Lint all packages
+pnpm typecheck                   # Type-check all packages
 
-OneCell Assistant runs Claude-powered agents inside OneCell Runtime sandboxes, providing OS-level isolation for each conversation group.
+# Native runtime testing (from repo root)
+cmake --preset release && cmake --build --preset release && ctest --preset release
+```
 
 ## Documentation
 

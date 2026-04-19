@@ -66,6 +66,44 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - **Agent Swarms** — Spin up teams of specialized agents that collaborate on complex tasks.
 - **Optional integrations** — Add Gmail (`/add-gmail`) and more via skills.
 
+## Interface model
+
+NanoClaw has two user-facing interface modes:
+
+- **Terminal mode** — the traditional Claude Code-style experience. You interact with NanoClaw directly in the terminal.
+- **Group/channel mode** — the OpenClaw-style experience. You interact with NanoClaw inside external messaging surfaces such as group email, WhatsApp, Telegram, Slack, Discord, or Gmail.
+
+In this model, channels are not just transports; they are part of the product UI.
+
+Claude Code skills such as `/setup`, `/customize`, and `/add-telegram` are bootstrap tooling for setup, installation, and extension. They are not the day-to-day UI that users operate NanoClaw through.
+
+The `@onecell/edgejs` package is one runtime used by edge execution, not a user-facing interface.
+
+## Execution and routing model
+
+NanoClaw has multiple execution backends:
+
+- **edge backend** — lightweight execution through the edge runtime stack
+- **container backend** — heavier execution path for isolation-sensitive or tool-heavy work
+
+Config supports three execution modes:
+
+- `edge`
+- `container`
+- `auto`
+
+In `auto`, NanoClaw does capability-based routing rather than relying on a high-level semantic intent classifier. It inspects execution requirements such as scripts and requested tools/capabilities, then dispatches work to the appropriate backend.
+
+In practice, this means:
+
+- group config can pin execution to `edge` or `container`
+- script-driven work routes to the heavy/container path
+- unsupported or heavy-only capabilities route to the container path
+- edge-compatible work can stay on the edge path
+- edge runtime failures do not silently escalate to container after the turn has started
+- terminal mode surfaces an explicit `/retry-container` path when an edge run should be retried on container
+- scheduled tasks fail explicitly and record that container escalation is available instead of auto-retrying on container
+
 ## Usage
 
 Talk to your assistant with the trigger word (default: `@Andy`):
@@ -97,17 +135,108 @@ Or run `/customize` for guided changes.
 ## Requirements
 
 - macOS, Linux, or Windows (via WSL2)
-- Node.js 20+
+- Node.js 20+, pnpm 9+
 - [Claude Code](https://claude.ai/download)
 - [Apple Container](https://github.com/apple/container) (macOS) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
+
+## Development
+
+### Quick build (edge mode, no sandbox)
+
+```bash
+# From monorepo root
+pnpm install
+pnpm build:nanoclaw          # builds edgejs native binary + TypeScript
+pnpm dev                     # starts nanoclaw in dev mode (tsx)
+```
+
+This runs without `--safe` mode — the edge binary uses its built-in V8 directly. Good for iteration.
+
+### Enabling --safe mode (WASM sandbox)
+
+`--safe` mode runs agent code inside a WebAssembly sandbox via Wasmer. Enable it in your config:
+
+```json
+{
+  "edge": {
+    "provider": "anthropic",
+    "safe": true
+  }
+}
+```
+
+Then build the WASM artifact:
+
+```bash
+# 1. Install the wasix C/C++ cross-compiler toolchain
+cargo install wasixcc
+sudo wasixccenv install-executables /usr/local/bin
+
+# 2. Download the LLVM + sysroot (uses gh for auth, avoids rate limits)
+gh release download 21.1.203 --repo wasix-org/llvm-project \
+  --pattern "LLVM-MacOS-aarch64.tar.gz" -D ~/.wasixcc/llvm
+cd ~/.wasixcc/llvm && tar xzf LLVM-MacOS-aarch64.tar.gz
+
+gh release download v2026-02-16.1 --repo wasix-org/wasix-libc \
+  -D ~/.wasixcc/sysroot
+cd ~/.wasixcc/sysroot
+for f in sysroot*.tar.gz; do mkdir -p "${f%.tar.gz}" && tar xzf "$f" -C "${f%.tar.gz}"; done
+# Flatten the nested directory structure
+for dir in sysroot sysroot-eh sysroot-ehpic sysroot-exnref-eh sysroot-exnref-ehpic; do
+  inner="$dir/wasix-$dir/sysroot"
+  [ -d "$inner" ] && mv "$inner"/* "$dir"/ 2>/dev/null
+done
+# Copy the clang runtime to where wasixcc expects it
+mkdir -p ~/.wasixcc/llvm/lib/clang/21/lib/wasm32-unknown-wasi
+cp ~/.wasixcc/sysroot/sysroot-exnref-eh/lib/wasm32-wasi/libclang_rt.builtins-wasm32.a \
+   ~/.wasixcc/llvm/lib/clang/21/lib/wasm32-unknown-wasi/libclang_rt.builtins.a
+
+# 3. Build the WASM artifact (~5-10 min)
+bash wasix/build-wasix.sh
+# Output: build-wasix/edgejs.wasm
+
+# 4. Build nanoclaw (includes edgejs native binary)
+pnpm build:nanoclaw
+
+# 5. Run with --safe mode
+pnpm dev
+```
+
+If `edge.safe: true` is set but `build-wasix/edgejs.wasm` is missing, nanoclaw will error with instructions to build it.
+
+> **Note:** Step 2 only needs to happen once. After that, `bash wasix/build-wasix.sh` rebuilds the WASM artifact from source in ~5 minutes.
+
+### Verifying --safe mode
+
+```bash
+node --input-type=module -e "
+import { resolveRunnerCommand } from './packages/nanoclaw/dist/edge-subprocess-runner.js';
+console.log(JSON.stringify(resolveRunnerCommand(), null, 2));
+"
+```
+
+If you see `--safe --wasmer-package .../build-wasix/edgejs.wasm` in the args, it's working.
+
+### Useful commands
+
+```bash
+pnpm build                      # build all packages
+pnpm build:nanoclaw             # build edgejs + nanoclaw
+pnpm build:edgejs               # build edgejs native binary only
+pnpm dev                        # run nanoclaw in dev mode (tsx)
+pnpm start                      # run nanoclaw from built dist
+pnpm --filter @onecell/nanoclaw run test
+pnpm --filter @onecell/nanoclaw run lint
+pnpm --filter @onecell/nanoclaw run typecheck
+```
 
 ## Architecture
 
 ```
-Channels --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
+Channels/UI --> SQLite --> Polling loop --> Policy routing --> Edge or Container backend --> Response
 ```
 
-Single Node.js process. Channels are added via skills and self-register at startup. Agents execute in isolated Linux containers with filesystem isolation. Per-group message queue with concurrency control. IPC via filesystem.
+Single Node.js process. Channels are added via skills and self-register at startup. The orchestrator maintains per-group state, infers required capabilities from incoming work, selects an execution backend up front, and surfaces explicit retry/escalation paths when an edge runtime fails. Per-group message queue with concurrency control. IPC via filesystem.
 
 Key files:
 

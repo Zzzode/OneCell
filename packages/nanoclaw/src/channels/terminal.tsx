@@ -1,0 +1,1022 @@
+/* eslint-disable no-control-regex */
+import React from 'react'
+import { render } from 'ink'
+
+import {
+  EDGE_ANTHROPIC_MODEL,
+  EDGE_ENABLE_TOOLS,
+  EDGE_MODEL,
+  EDGE_RUNNER_MODE,
+  EDGE_RUNNER_PROVIDER,
+  TERMINAL_GROUP_FOLDER,
+  TERMINAL_GROUP_EXECUTION_MODE,
+  TERMINAL_GROUP_JID,
+  TERMINAL_GROUP_NAME,
+  TERMINAL_USER_JID,
+  TERMINAL_USER_NAME,
+  TIMEZONE,
+} from '../config/config.js';
+import {
+  getAllTasks,
+  getTaskById,
+  listExecutionStatesForTaskNode,
+  listTaskGraphs,
+  listTaskNodes,
+  listExecutionStates,
+  updateTask,
+  clearConversationMessages,
+} from '../db.js';
+import { buildFrameworkObservabilitySnapshot } from '../framework/framework-observability.js';
+import {
+  type TerminalPanelTranscriptEntry,
+} from '../terminal/terminal-panel.js';
+import {
+  buildTerminalActiveTurnSummary,
+  buildTerminalAgentsSummaryFromObservability,
+  buildTerminalFocusSummary,
+  buildTerminalGraphSummaryFromObservability,
+  cycleTerminalFocus,
+  resetTerminalObservability,
+  setTerminalFocus,
+} from '../terminal/terminal-observability.js';
+import { deleteScheduledTask } from '../tasks/task-control.js';
+import { silenceLogger, unsilenceLogger } from '../infra/logger.js';
+import type { Channel } from '../types.js';
+import { formatDisplayDateTime } from '../infra/timezone.js';
+import { TerminalApp } from '../terminal/terminal-app.js';
+import { registerChannel, type ChannelOpts } from './registry.js';
+
+const COLOR_DIM = '\x1b[90m';
+const COLOR_RESET = '\x1b[0m';
+const COLOR_SUCCESS = '\x1b[38;5;114m';
+const COLOR_WARNING = '\x1b[38;5;179m';
+const TERMINAL_EVENT_LIMIT = 50;
+const TERMINAL_TRANSCRIPT_LIMIT = 80;
+const DEFAULT_LOG_TAIL = 12;
+
+type TerminalExecutionHealth = 'healthy' | 'missing' | 'stale' | 'terminal';
+type TerminalGraphHealth = 'healthy' | 'stale' | 'terminal' | 'idle';
+type TerminalSidePanelTab = 'turn' | 'agents' | 'graph' | 'tasks';
+type TerminalDrawerTab = 'logs';
+type TerminalOverlayKind =
+  | 'help'
+  | 'focus'
+  | 'system'
+  | 'session'
+  | 'retry-container'
+  | 'interrupt';
+
+type LocalCommand =
+  | '/help'
+  | '/status'
+  | '/agents'
+  | '/graph'
+  | '/focus'
+  | '/tasks'
+  | '/task'
+  | '/new'
+  | '/session'
+  | '/logs'
+  | '/clear'
+  | '/retry-container'
+  | '/exit'
+  | '/quit';
+
+let activeTerminalChannel: TerminalChannel | null = null;
+
+function setActiveTerminalChannel(channel: TerminalChannel): void {
+  activeTerminalChannel = channel;
+}
+let terminalEvents: Array<{ at: string; text: string }> = [];
+let terminalReplies: Array<{ at: string; text: string }> = [];
+let terminalTranscript: TerminalPanelTranscriptEntry[] = [];
+
+function terminalEventTail(limit: number): string[] {
+  return terminalEvents.slice(-limit).map((entry) => entry.text);
+}
+
+function terminalTranscriptTail(limit: number): TerminalPanelTranscriptEntry[] {
+  return terminalTranscript.slice(-limit);
+}
+
+function providerLabel(): string {
+  if (EDGE_RUNNER_PROVIDER === 'openai') return 'openai-compatible';
+  return EDGE_RUNNER_PROVIDER;
+}
+
+function modelLabel(): string {
+  if (EDGE_RUNNER_PROVIDER === 'anthropic') {
+    return EDGE_ANTHROPIC_MODEL || 'default';
+  }
+  return EDGE_MODEL || 'default';
+}
+
+function terminalTaskSnapshot() {
+  const tasks = getAllTasks().filter(
+    (task) =>
+      task.chat_jid === TERMINAL_GROUP_JID ||
+      task.group_folder === TERMINAL_GROUP_FOLDER,
+  );
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const running = listExecutionStates('running').filter(
+    (execution) => execution.taskId && taskIds.has(execution.taskId),
+  ).length;
+  const scheduled = tasks.filter((task) => task.status === 'active').length;
+  return { tasks, running, scheduled };
+}
+
+function parseTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatDuration(createdAt: string, finishedAt?: string | null): string {
+  const started = parseTimestamp(createdAt);
+  const finished = parseTimestamp(finishedAt);
+  if (started === null) return 'unknown';
+  const end = finished ?? Date.now();
+  const durationMs = Math.max(0, end - started);
+  if (durationMs < 1000) return `${durationMs}ms`;
+  return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function resolveExecutionHealth(execution: {
+  status: string;
+  leaseUntil: string;
+  lastHeartbeatAt: string | null;
+}): TerminalExecutionHealth {
+  if (
+    execution.status === 'completed' ||
+    execution.status === 'failed' ||
+    execution.status === 'committed' ||
+    execution.status === 'lost'
+  ) {
+    return 'terminal';
+  }
+
+  const leaseUntil = parseTimestamp(execution.leaseUntil);
+  if (leaseUntil === null || !execution.lastHeartbeatAt) {
+    return 'missing';
+  }
+
+  return leaseUntil >= Date.now() ? 'healthy' : 'stale';
+}
+
+function buildGraphExecutionHealth(graphId: string): {
+  graphHealth: TerminalGraphHealth;
+  executionHealthByTaskId: Map<string, TerminalExecutionHealth>;
+} {
+  const executionHealthByTaskId = new Map<string, TerminalExecutionHealth>();
+  const nodes = listTaskNodes(graphId);
+  const executions = nodes.flatMap((node) =>
+    listExecutionStatesForTaskNode(node.taskId).map((execution) => ({
+      taskId: node.taskId,
+      health: resolveExecutionHealth(execution),
+      status: execution.status,
+    })),
+  );
+
+  for (const execution of executions) {
+    executionHealthByTaskId.set(execution.taskId, execution.health);
+  }
+
+  const activeExecutions = executions.filter(
+    (execution) =>
+      execution.status === 'running' || execution.status === 'cancel_requested',
+  );
+  if (activeExecutions.length === 0) {
+    return {
+      graphHealth: executions.length > 0 ? 'terminal' : 'idle',
+      executionHealthByTaskId,
+    };
+  }
+  if (activeExecutions.some((execution) => execution.health === 'healthy')) {
+    return { graphHealth: 'healthy', executionHealthByTaskId };
+  }
+  if (activeExecutions.some((execution) => execution.health === 'missing')) {
+    return { graphHealth: 'idle', executionHealthByTaskId };
+  }
+  return { graphHealth: 'stale', executionHealthByTaskId };
+}
+
+function extractWorkerLabel(taskId: string, nodeKind: string): string {
+  if (nodeKind === 'aggregate') return 'aggregate';
+  if (nodeKind === 'root') return 'root';
+  const match = taskId.match(/:child-(\d+)$/);
+  if (match) return `worker ${match[1]}`;
+  return taskId;
+}
+
+function findLatestTerminalTeamGraph() {
+  const graphs = listTaskGraphs().filter(
+    (graph) =>
+      graph.chatJid === TERMINAL_GROUP_JID ||
+      graph.groupFolder === TERMINAL_GROUP_FOLDER,
+  );
+  const graphIdsWithFanout = new Set(
+    listTaskNodes()
+      .filter((node) => node.nodeKind === 'fanout_child')
+      .map((node) => node.graphId),
+  );
+  const teamGraphs = graphs.filter((graph) =>
+    graphIdsWithFanout.has(graph.graphId),
+  );
+  if (teamGraphs.length === 0) return null;
+
+  const enriched = teamGraphs.map((graph) => ({
+    graph,
+    ...buildGraphExecutionHealth(graph.graphId),
+  }));
+
+  const rankGraph = (entry: {
+    graph: { status: string };
+    graphHealth: TerminalGraphHealth;
+  }) => {
+    if (entry.graph.status === 'running' && entry.graphHealth === 'healthy') {
+      return 4;
+    }
+    if (entry.graph.status === 'running' && entry.graphHealth === 'idle') {
+      return 3;
+    }
+    if (entry.graph.status === 'completed' || entry.graph.status === 'failed') {
+      return 2;
+    }
+    if (entry.graph.status === 'running' && entry.graphHealth === 'stale') {
+      return 1;
+    }
+    return 0;
+  };
+
+  const sorted = enriched.sort((left, right) => {
+    const rankDiff = rankGraph(right) - rankGraph(left);
+    if (rankDiff !== 0) return rankDiff;
+    return (
+      (parseTimestamp(right.graph.createdAt) ?? 0) -
+      (parseTimestamp(left.graph.createdAt) ?? 0)
+    );
+  });
+
+  return sorted[0] ?? null;
+}
+
+function recordTerminalEvent(text: string): void {
+  const normalized = text.trim();
+  if (!normalized) return;
+  terminalEvents.push({
+    at: new Date().toISOString(),
+    text: normalized,
+  });
+  if (terminalEvents.length > TERMINAL_EVENT_LIMIT) {
+    terminalEvents = terminalEvents.slice(-TERMINAL_EVENT_LIMIT);
+  }
+}
+
+function recordTerminalReply(text: string): void {
+  const normalized = text.trim();
+  if (!normalized) return;
+  terminalReplies.push({
+    at: new Date().toISOString(),
+    text: normalized,
+  });
+  if (terminalReplies.length > TERMINAL_EVENT_LIMIT) {
+    terminalReplies = terminalReplies.slice(-TERMINAL_EVENT_LIMIT);
+  }
+}
+
+function recordTerminalTranscript(
+  role: TerminalPanelTranscriptEntry['role'],
+  text: string,
+): void {
+  const normalized = text.trim();
+  if (!normalized) return;
+  const at = new Date().toISOString();
+  // Check recent entries for duplicates, not just the last one.
+  // System/tool events may be interleaved between duplicate submissions.
+  const lookback = Math.min(terminalTranscript.length, 8);
+  for (let i = terminalTranscript.length - 1; i >= terminalTranscript.length - lookback; i--) {
+    const entry = terminalTranscript[i]!;
+    if (entry.role === role && entry.text === normalized) {
+      entry.at = at;
+      return;
+    }
+  }
+  terminalTranscript.push({ at, role, text: normalized });
+  if (terminalTranscript.length > TERMINAL_TRANSCRIPT_LIMIT) {
+    terminalTranscript = terminalTranscript.slice(-TERMINAL_TRANSCRIPT_LIMIT);
+  }
+}
+
+function recordTerminalToolEntry(
+  text: string,
+  toolData: import('../terminal/terminal-panel.js').ToolTranscriptEntry,
+): import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry {
+  const at = new Date().toISOString();
+  const entry: import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry = {
+    at,
+    role: 'tool',
+    text,
+    toolData,
+  };
+  terminalTranscript.push(entry);
+  if (terminalTranscript.length > TERMINAL_TRANSCRIPT_LIMIT) {
+    terminalTranscript = terminalTranscript.slice(-TERMINAL_TRANSCRIPT_LIMIT);
+  }
+  return entry;
+}
+
+function clearTerminalEventLog(): void {
+  terminalEvents = [];
+}
+
+function clearTerminalReplyLog(): void {
+  terminalReplies = [];
+}
+
+function clearTerminalTranscriptLog(): void {
+  terminalTranscript = [];
+}
+
+export function buildTerminalLogsSummary(limit = DEFAULT_LOG_TAIL): string {
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.trunc(limit))
+    : DEFAULT_LOG_TAIL;
+  const entries = terminalEvents.slice(-safeLimit);
+  if (entries.length === 0) {
+    return '最近没有系统事件。';
+  }
+  return entries
+    .map(
+      (entry) => `[${formatDisplayDateTime(entry.at, TIMEZONE)}] ${entry.text}`,
+    )
+    .join('\n');
+}
+
+export function resetTerminalEventLogForTests(): void {
+  clearTerminalEventLog();
+  clearTerminalReplyLog();
+  clearTerminalTranscriptLog();
+}
+
+export function appendTerminalEventForTests(text: string): void {
+  recordTerminalEvent(text);
+}
+
+export function executeTerminalTaskCommand(args: string[]): string {
+  const action = args[0];
+  const taskId = args[1];
+
+  if (!action || action === 'list') {
+    return buildTerminalTasksSummary();
+  }
+
+  if (!taskId) {
+    return '用法：/task <list|pause|resume|delete> [taskId]';
+  }
+
+  const task = getTaskById(taskId);
+  if (!task) {
+    return `任务不存在：${taskId}`;
+  }
+
+  if (
+    task.chat_jid !== TERMINAL_GROUP_JID &&
+    task.group_folder !== TERMINAL_GROUP_FOLDER
+  ) {
+    return `当前 terminal 无权操作任务：${taskId}`;
+  }
+
+  switch (action) {
+    case 'pause':
+      if (task.status === 'paused') {
+        return `任务已是 paused：${taskId}`;
+      }
+      if (task.status === 'completed') {
+        return `任务已完成，不能暂停：${taskId}`;
+      }
+      updateTask(taskId, { status: 'paused' });
+      return `任务已暂停：${taskId}`;
+    case 'resume':
+      if (task.status === 'active') {
+        return `任务已是 active：${taskId}`;
+      }
+      if (task.status === 'completed' || !task.next_run) {
+        return `任务不可恢复：${taskId}`;
+      }
+      updateTask(taskId, { status: 'active' });
+      return `任务已恢复：${taskId}`;
+    case 'delete':
+      deleteScheduledTask(taskId);
+      return `任务已删除：${taskId}`;
+    default:
+      return `未知 task 命令：${action}\n用法：/task <list|pause|resume|delete> [taskId]`;
+  }
+}
+
+function paint(text: string, color: string): string {
+  return `${color}${text}${COLOR_RESET}`;
+}
+
+export function buildTerminalStatusLine(): string {
+  const { running, scheduled } = terminalTaskSnapshot();
+  const left = [
+    `${TERMINAL_GROUP_EXECUTION_MODE} · ${EDGE_RUNNER_MODE}`,
+    providerLabel(),
+    modelLabel(),
+    TERMINAL_GROUP_FOLDER,
+  ];
+  const right = [
+    paint(`${running} running`, running > 0 ? COLOR_SUCCESS : COLOR_DIM),
+    paint(`${scheduled} scheduled`, scheduled > 0 ? COLOR_WARNING : COLOR_DIM),
+  ];
+  return `${paint(left.join(' · '), COLOR_DIM)} ${paint('│', COLOR_DIM)} ${right.join(` ${paint('·', COLOR_DIM)} `)}`;
+}
+
+export function buildTerminalTasksSummary(): string {
+  const { tasks } = terminalTaskSnapshot();
+  if (tasks.length === 0) {
+    return '当前没有任务。';
+  }
+
+  const runningTaskIds = new Set(
+    listExecutionStates('running')
+      .map((execution) => execution.taskId)
+      .filter((taskId): taskId is string => typeof taskId === 'string'),
+  );
+
+  return tasks
+    .map((task) => {
+      const status = runningTaskIds.has(task.id) ? 'running' : task.status;
+      const nextRun = task.next_run
+        ? formatDisplayDateTime(task.next_run, TIMEZONE)
+        : 'none';
+      return [
+        `taskId: ${task.id}`,
+        `status: ${status}`,
+        `scheduleValue: ${task.schedule_value}`,
+        `nextRun: ${nextRun}`,
+      ].join('\n');
+    })
+    .join('\n\n');
+}
+
+export function buildTerminalAgentsSummary(): string {
+  const liveSummary = buildTerminalAgentsSummaryFromObservability();
+  if (liveSummary) {
+    return liveSummary;
+  }
+
+  const selection = findLatestTerminalTeamGraph();
+  if (!selection) {
+    return '当前没有可观察的 edge team graph。';
+  }
+  const { graph, graphHealth, executionHealthByTaskId } = selection;
+
+  const nodes = listTaskNodes(graph.graphId).filter(
+    (node) => node.nodeKind === 'fanout_child' || node.nodeKind === 'aggregate',
+  );
+  if (nodes.length === 0) {
+    return `graphId: ${graph.graphId}\n当前 graph 还没有 fanout agents。`;
+  }
+
+  return [
+    `graphId: ${graph.graphId}`,
+    `graphStatus: ${graph.status}`,
+    `graphHealth: ${graphHealth}`,
+    ...nodes.map((node) => {
+      const executions = listExecutionStatesForTaskNode(node.taskId);
+      const latestExecution =
+        executions.length > 0 ? executions[executions.length - 1] : null;
+      const status = latestExecution?.status ?? node.status;
+      const duration = latestExecution
+        ? formatDuration(latestExecution.createdAt, latestExecution.finishedAt)
+        : 'unknown';
+      return [
+        `agent: ${extractWorkerLabel(node.taskId, node.nodeKind)}`,
+        `taskId: ${node.taskId}`,
+        `nodeKind: ${node.nodeKind}`,
+        `status: ${status}`,
+        `health: ${executionHealthByTaskId.get(node.taskId) ?? 'terminal'}`,
+        `backend: ${latestExecution?.backend ?? node.backendId ?? 'unknown'}`,
+        `duration: ${duration}`,
+        `error: ${latestExecution?.error ?? node.error ?? 'none'}`,
+      ].join('\n');
+    }),
+  ].join('\n\n');
+}
+
+export function buildTerminalGraphSummary(): string {
+  const liveSummary = buildTerminalGraphSummaryFromObservability();
+  if (liveSummary) {
+    return liveSummary;
+  }
+
+  const selection = findLatestTerminalTeamGraph();
+  if (!selection) {
+    return '当前没有可观察的 edge team graph。';
+  }
+  const { graph, graphHealth, executionHealthByTaskId } = selection;
+
+  const nodes = listTaskNodes(graph.graphId);
+  const nodeLines = nodes.map((node) => {
+    const executions = listExecutionStatesForTaskNode(node.taskId);
+    const latestExecution =
+      executions.length > 0 ? executions[executions.length - 1] : null;
+    return [
+      `taskId: ${node.taskId}`,
+      `nodeKind: ${node.nodeKind}`,
+      `status: ${node.status}`,
+      `executionStatus: ${latestExecution?.status ?? 'none'}`,
+      `health: ${executionHealthByTaskId.get(node.taskId) ?? 'terminal'}`,
+      `backend: ${latestExecution?.backend ?? node.backendId ?? 'unknown'}`,
+      `routeReason: ${node.routeReason ?? 'none'}`,
+      `error: ${latestExecution?.error ?? node.error ?? 'none'}`,
+    ].join('\n');
+  });
+
+  return [
+    `graphId: ${graph.graphId}`,
+    `requestKind: ${graph.requestKind}`,
+    `graphStatus: ${graph.status}`,
+    `graphHealth: ${graphHealth}`,
+    `rootTaskId: ${graph.rootTaskId}`,
+    `createdAt: ${formatDisplayDateTime(graph.createdAt, TIMEZONE)}`,
+    `updatedAt: ${formatDisplayDateTime(graph.updatedAt, TIMEZONE)}`,
+    `error: ${graph.error ?? 'none'}`,
+    '',
+    ...nodeLines,
+  ].join('\n');
+}
+
+export function buildTerminalStatusSummary(): string {
+  return [
+    `mode: ${TERMINAL_GROUP_EXECUTION_MODE}/${EDGE_RUNNER_MODE}`,
+    `provider: ${providerLabel()}`,
+    `model: ${modelLabel()}`,
+    `tools: ${EDGE_ENABLE_TOOLS ? 'on' : 'off'}`,
+    `group: ${TERMINAL_GROUP_NAME} (${TERMINAL_GROUP_FOLDER})`,
+    buildTerminalStatusLine().replace(/\x1b\[[0-9;]*m/g, ''),
+    buildTerminalActiveTurnSummary(),
+    buildTerminalObservabilitySummary(),
+  ].join('\n');
+}
+
+export function buildTerminalObservabilitySummary(): string {
+  const snapshot = buildFrameworkObservabilitySnapshot({
+    groupFolder: TERMINAL_GROUP_FOLDER,
+  });
+  const { governance } = snapshot;
+  return [
+    `framework.graphs: ${governance.totalGraphs}`,
+    `framework.executions: ${governance.totalExecutions}`,
+    `framework.edgeFallbackRate: ${governance.edgeToHeavyFallbackRate}`,
+    `framework.commitConflictRate: ${governance.commitConflictRate}`,
+  ].join('\n');
+}
+
+class TerminalChannel implements Channel {
+  name = 'terminal';
+  private connected = false;
+  private lastAssistantMessageByJid = new Map<string, string>();
+  private typingByJid = new Set<string>();
+  private inkInstance: ReturnType<typeof render> | null = null;
+  private latestSystemEvent: string | null = null;
+  private latestAssistantMessage: string | null = null;
+  private sidePanel: {
+    isOpen: boolean;
+    tab: TerminalSidePanelTab;
+    body: string | null;
+  } = { isOpen: false, tab: 'turn', body: null };
+  private drawer: {
+    isOpen: boolean;
+    tab: TerminalDrawerTab;
+    body: string | null;
+  } = { isOpen: false, tab: 'logs', body: null };
+  private overlay: {
+    kind: TerminalOverlayKind | null;
+    body: string | null;
+  } = { kind: null, body: null };
+  private verbose = false;
+
+  constructor(private readonly opts: ChannelOpts) {}
+
+  async connect(): Promise<void> {
+    this.connected = true;
+    setActiveTerminalChannel(this);
+    silenceLogger();
+    clearConversationMessages(TERMINAL_GROUP_JID);
+    this.opts.onChatMetadata(
+      TERMINAL_GROUP_JID,
+      new Date().toISOString(),
+      TERMINAL_GROUP_NAME,
+      this.name,
+      true,
+    );
+
+    this.renderScreen();
+  }
+
+  private handleFocusCycle(direction: 1 | -1): void {
+    const next = cycleTerminalFocus(direction);
+    if (!next) return;
+    const detail = buildTerminalFocusSummary();
+    this.openOverlay(
+      'focus',
+      detail ? `focus -> ${next}\n\n${detail}` : `focus -> ${next}`,
+    );
+  }
+
+  private async handleInterrupt(): Promise<void> {
+    if (this.dismissHighestPrioritySurface()) {
+      this.renderScreen();
+      return;
+    }
+    this.latestSystemEvent = '已请求打断当前执行';
+    this.openOverlay('interrupt', '已请求打断当前执行。');
+    await this.opts.onCancel?.(TERMINAL_GROUP_FOLDER);
+  }
+
+  private hasActiveExecutions(): boolean {
+    const running = listExecutionStates('running').filter(
+      (execution) => execution.groupJid === TERMINAL_GROUP_JID,
+    );
+    const cancelRequested = listExecutionStates('cancel_requested').filter(
+      (execution) => execution.groupJid === TERMINAL_GROUP_JID,
+    );
+    const runningGraphs = listTaskGraphs('running').filter(
+      (graph) =>
+        graph.chatJid === TERMINAL_GROUP_JID ||
+        graph.groupFolder === TERMINAL_GROUP_FOLDER,
+    );
+    return (
+      running.length > 0 ||
+      cancelRequested.length > 0 ||
+      runningGraphs.length > 0
+    );
+  }
+
+  private async handleLine(line: string): Promise<void> {
+    const text = line.trim();
+    if (!text) {
+      this.renderScreen();
+      return;
+    }
+
+    if (await this.handleLocalCommand(text)) {
+      return;
+    }
+
+    if (this.typingByJid.has(TERMINAL_GROUP_JID)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    this.lastAssistantMessageByJid.delete(TERMINAL_GROUP_JID);
+    this.closeOverlay();
+    recordTerminalTranscript('user', text);
+    // Use immediate render for user input to show it right away
+    this.renderScreen();
+    this.opts.onMessage(TERMINAL_GROUP_JID, {
+      id: `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      chat_jid: TERMINAL_GROUP_JID,
+      sender: TERMINAL_USER_JID,
+      sender_name: TERMINAL_USER_NAME,
+      content: text,
+      timestamp: now,
+      is_from_me: false,
+    });
+  }
+
+  private async handleLocalCommand(input: string): Promise<boolean> {
+    const parts = input.trim().split(/\s+/);
+    const command = parts[0] as LocalCommand | string;
+    switch (command) {
+      case '/exit':
+      case '/quit':
+        resetTerminalObservability();
+        clearTerminalEventLog();
+        clearTerminalReplyLog();
+        clearTerminalTranscriptLog();
+        await this.opts.onQuit?.(TERMINAL_GROUP_FOLDER);
+        await this.disconnect();
+        process.exit(0);
+        return true;
+      case '/help':
+        this.openOverlay(
+          'help',
+          [
+            'Terminal commands',
+            '',
+            'Session',
+            '  /status  查看当前状态',
+            '  /new     清空当前 terminal provider session',
+            '  /session clear  清空当前 terminal provider session',
+            '',
+            'Focus',
+            '  /agents  查看当前 team agents 状态',
+            '  /graph   查看当前 team graph 明细',
+            '  /focus <root|planner|worker N|aggregate|clear>',
+            '  Shift+Up/Down  切换当前 focus agent',
+            '',
+            'Tasks',
+            '  /tasks   查看当前任务',
+            '  /task list|pause|resume|delete <taskId>',
+            '',
+            'Runtime',
+            '  /logs [n]  查看最近系统事件',
+            '  /retry-container  在 container 上重试最近一次可重试 edge 失败',
+            '  /clear  关闭辅助界面',
+            '  /quit   退出终端',
+            '',
+            'ESC 先关闭当前浮层；若无浮层则打断当前执行',
+          ].join('\n'),
+        );
+        return true;
+      case '/status':
+        this.openSidePanel('turn', buildTerminalStatusSummary());
+        return true;
+      case '/agents':
+        this.openSidePanel('agents', buildTerminalAgentsSummary());
+        return true;
+      case '/graph':
+        this.openSidePanel('graph', buildTerminalGraphSummary());
+        return true;
+      case '/focus': {
+        const target = parts.slice(1).join(' ').trim();
+        if (!target) {
+          this.openOverlay(
+            'focus',
+            '用法：/focus <root|planner|worker N|aggregate|clear>',
+          );
+          return true;
+        }
+        const result = setTerminalFocus(target);
+        const detail = buildTerminalFocusSummary();
+        this.openOverlay('focus', detail ? `${result}\n\n${detail}` : result);
+        return true;
+      }
+      case '/tasks':
+        this.openSidePanel('tasks', buildTerminalTasksSummary());
+        return true;
+      case '/task':
+        await this.handleTaskCommand(parts.slice(1));
+        return true;
+      case '/new':
+        await this.handleSessionCommand(['clear']);
+        return true;
+      case '/session':
+        await this.handleSessionCommand(parts.slice(1));
+        return true;
+      case '/logs': {
+        const count = Number.parseInt(parts[1] || '', 10);
+        this.openDrawer(
+          'logs',
+          buildTerminalLogsSummary(
+            Number.isNaN(count) ? DEFAULT_LOG_TAIL : count,
+          ),
+        );
+        return true;
+      }
+      case '/clear':
+        this.closeAuxiliarySurfaces();
+        this.renderScreen();
+        return true;
+      case '/retry-container':
+        await this.handleRetryContainerCommand();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private async handleRetryContainerCommand(): Promise<void> {
+    try {
+      const result = await this.opts.onRetryContainer?.(TERMINAL_GROUP_FOLDER);
+      this.openOverlay(
+        'retry-container',
+        result ?? '当前 terminal 不支持 /retry-container。',
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.openOverlay(
+        'retry-container',
+        `执行 /retry-container 时出错：${message}`,
+      );
+    }
+  }
+
+  private async handleTaskCommand(args: string[]): Promise<void> {
+    const summary =
+      args.length === 0
+        ? buildTerminalTasksSummary()
+        : executeTerminalTaskCommand(args);
+    this.openSidePanel('tasks', summary);
+  }
+
+  private async handleSessionCommand(args: string[]): Promise<void> {
+    const action = args[0];
+    if (!action || (action !== 'clear' && action !== 'new')) {
+      this.openOverlay('session', '用法：/session <clear>');
+      return;
+    }
+
+    await this.opts.onResetSession?.(TERMINAL_GROUP_FOLDER);
+    clearConversationMessages(TERMINAL_GROUP_JID);
+    this.lastAssistantMessageByJid.delete(TERMINAL_GROUP_JID);
+    this.latestAssistantMessage = null;
+    this.latestSystemEvent = '已清空当前 terminal provider session';
+    resetTerminalObservability();
+    clearTerminalEventLog();
+    clearTerminalReplyLog();
+    clearTerminalTranscriptLog();
+    this.closeAuxiliarySurfaces();
+    this.openOverlay(
+      'session',
+      '已清空当前 terminal provider session。下一条消息将从新会话开始。',
+    );
+  }
+
+  private buildRenderProps(): Parameters<typeof TerminalApp>[0] {
+    const busy = this.typingByJid.has(TERMINAL_GROUP_JID);
+    const width = process.stdout.columns ?? 100;
+    return {
+      backend: TERMINAL_GROUP_EXECUTION_MODE,
+      busy,
+      verbose: this.verbose,
+      width,
+      height: process.stdout.rows,
+      latestSystemEvent: this.latestSystemEvent,
+      latestAssistantMessage: this.latestAssistantMessage,
+      recentSystemEvents: terminalEventTail(4),
+      recentTranscript: terminalTranscriptTail(12),
+      sidePanel: this.sidePanel,
+      drawer: this.drawer,
+      overlay: this.overlay,
+      onSubmit: (text: string) => { void this.handleLine(text) },
+      onEscape: () => { void this.handleInterrupt() },
+      onShiftUp: () => { this.handleFocusCycle(-1) },
+      onShiftDown: () => { this.handleFocusCycle(1) },
+      onCtrlO: () => { this.verbose = !this.verbose; this.renderScreen(); },
+    };
+  }
+
+  private renderScreen(): void {
+    const props = this.buildRenderProps();
+
+    if (this.inkInstance) {
+      this.inkInstance.rerender(<TerminalApp {...props} />);
+    } else {
+      this.inkInstance = render(<TerminalApp {...props} />, {
+        exitOnCtrlC: false,
+        alternateScreen: true,
+      });
+    }
+  }
+
+  private openSidePanel(tab: TerminalSidePanelTab, body: string): void {
+    this.sidePanel = { isOpen: true, tab, body };
+    this.renderScreen();
+  }
+
+  private openDrawer(tab: TerminalDrawerTab, body: string): void {
+    this.drawer = { isOpen: true, tab, body };
+    this.renderScreen();
+  }
+
+  private openOverlay(kind: TerminalOverlayKind, body: string): void {
+    this.overlay = { kind, body };
+    this.renderScreen();
+  }
+
+  private closeOverlay(): void {
+    this.overlay = { kind: null, body: null };
+  }
+
+  private closeDrawer(): void {
+    this.drawer = { isOpen: false, tab: this.drawer.tab, body: null };
+  }
+
+  private closeSidePanel(): void {
+    this.sidePanel = { isOpen: false, tab: this.sidePanel.tab, body: null };
+  }
+
+  private dismissHighestPrioritySurface(): boolean {
+    if (this.overlay.kind) {
+      this.closeOverlay();
+      return true;
+    }
+    if (this.drawer.isOpen) {
+      this.closeDrawer();
+      return true;
+    }
+    if (this.sidePanel.isOpen) {
+      this.closeSidePanel();
+      return true;
+    }
+    return false;
+  }
+
+  private closeAuxiliarySurfaces(): void {
+    this.closeSidePanel();
+    this.closeDrawer();
+    this.closeOverlay();
+  }
+
+  async sendMessage(jid: string, text: string): Promise<void> {
+    if (!this.ownsJid(jid)) return;
+    const normalized = text.trim();
+    if (!normalized) return;
+    if (this.lastAssistantMessageByJid.get(jid) === normalized) return;
+
+    this.lastAssistantMessageByJid.set(jid, normalized);
+    recordTerminalReply(normalized);
+    recordTerminalTranscript('assistant', normalized);
+    this.latestAssistantMessage = normalized;
+    if (this.typingByJid.has(jid)) {
+      this.typingByJid.delete(jid);
+    }
+    this.renderScreen();
+  }
+
+  sendSystemEvent(jid: string, text: string): void {
+    if (!this.ownsJid(jid)) return;
+    const normalized = text.trim();
+    if (!normalized) return;
+
+    recordTerminalEvent(normalized);
+    recordTerminalTranscript('system', normalized);
+    this.latestSystemEvent = normalized;
+    this.renderScreen();
+  }
+
+  async setTyping(jid: string, isTyping: boolean): Promise<void> {
+    if (!this.ownsJid(jid)) return;
+
+    if (isTyping) {
+      if (this.typingByJid.has(jid)) return;
+      this.typingByJid.add(jid);
+      this.latestSystemEvent = '处理中…';
+      this.renderScreen();
+      return;
+    }
+
+    if (!this.typingByJid.has(jid)) return;
+    this.typingByJid.delete(jid);
+    this.renderScreen();
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  ownsJid(jid: string): boolean {
+    return jid === TERMINAL_GROUP_JID;
+  }
+
+  async disconnect(): Promise<void> {
+    unsilenceLogger();
+    if (this.inkInstance) {
+      this.inkInstance.unmount()
+      this.inkInstance = null
+    }
+    this.connected = false;
+    this.lastAssistantMessageByJid.clear();
+    this.typingByJid.clear();
+    this.latestSystemEvent = null;
+    this.latestAssistantMessage = null;
+    this.sidePanel = { isOpen: false, tab: 'turn', body: null };
+    this.drawer = { isOpen: false, tab: 'logs', body: null };
+    this.overlay = { kind: null, body: null };
+    clearTerminalReplyLog();
+    clearTerminalTranscriptLog();
+    if (activeTerminalChannel === this) {
+      activeTerminalChannel = null;
+    }
+  }
+}
+
+export function emitTerminalSystemEvent(jid: string, text: string): void {
+  activeTerminalChannel?.sendSystemEvent(jid, text);
+}
+
+export function emitTerminalToolEvent(
+  jid: string,
+  text: string,
+  toolData: import('../terminal/terminal-panel.js').ToolTranscriptEntry,
+): import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry | null {
+  if (!activeTerminalChannel?.ownsJid(jid)) return null;
+  const normalized = text.trim();
+  recordTerminalEvent(normalized || `tool: ${toolData.tool}`);
+  const entry = recordTerminalToolEntry(normalized, toolData);
+  activeTerminalChannel['renderScreen']();
+  return entry;
+}
+
+export function emitTerminalRefresh(jid: string): void {
+  if (!activeTerminalChannel?.ownsJid(jid)) return;
+  activeTerminalChannel['renderScreen']();
+}
+
+registerChannel('terminal', (opts) => {
+  return new TerminalChannel(opts);
+});

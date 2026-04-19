@@ -1,0 +1,205 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import { afterAll, describe, expect, it } from 'vitest';
+
+import {
+  loadConfigFile,
+  loadConfigFromArgv,
+  renderStartupConfigError,
+  resolveConfigPath,
+} from './config-loader.js';
+
+const tempFiles: string[] = [];
+
+function writeTempFile(filename: string, content: string): string {
+  const filePath = path.join(
+    os.tmpdir(),
+    `nanoclaw-test-${Date.now()}-${filename}`,
+  );
+  fs.writeFileSync(filePath, content, 'utf-8');
+  tempFiles.push(filePath);
+  return filePath;
+}
+
+afterAll(() => {
+  for (const f of tempFiles) {
+    try {
+      fs.unlinkSync(f);
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+});
+
+describe('resolveConfigPath', () => {
+  it('returns the value after --config when provided', () => {
+    const argv = [
+      'node',
+      'script.js',
+      '--config',
+      '/custom/path/to/config.json',
+    ];
+    expect(resolveConfigPath(argv)).toBe('/custom/path/to/config.json');
+  });
+
+  it('returns the value after --config with relative path', () => {
+    const argv = ['node', 'script.js', '--config', './my-config.json'];
+    expect(resolveConfigPath(argv)).toBe('./my-config.json');
+  });
+
+  it('returns default path when --config is not provided', () => {
+    const argv = ['node', 'script.js'];
+    const expected = path.join(process.cwd(), 'nanoclaw.config.json');
+    expect(resolveConfigPath(argv)).toBe(expected);
+  });
+
+  it('returns default path when argv is empty', () => {
+    const expected = path.join(process.cwd(), 'nanoclaw.config.json');
+    expect(resolveConfigPath([])).toBe(expected);
+  });
+
+  it('picks the first --config when multiple are provided', () => {
+    const argv = ['--config', 'first.json', '--config', 'second.json'];
+    expect(resolveConfigPath(argv)).toBe('first.json');
+  });
+});
+
+describe('renderStartupConfigError', () => {
+  it('turns a missing default config error into a friendly startup hint', () => {
+    const cwd = process.cwd();
+    const configPath = path.join(cwd, 'nanoclaw.config.json');
+
+    const rendered = renderStartupConfigError(
+      new Error(`Config file not found: ${configPath}`),
+      configPath,
+    );
+
+    expect(rendered).toContain('缺少配置文件：nanoclaw.config.json');
+    expect(rendered).toContain(
+      'cp nanoclaw.config.terminal.example.json nanoclaw.config.json',
+    );
+    expect(rendered).toContain(
+      '--config nanoclaw.config.terminal.example.json',
+    );
+  });
+
+  it('leaves unrelated startup errors unchanged', () => {
+    const rendered = renderStartupConfigError(
+      new Error('boom'),
+      path.join(process.cwd(), 'nanoclaw.config.json'),
+    );
+
+    expect(rendered).toBeNull();
+  });
+});
+
+describe('loadConfigFile', () => {
+  it('loads and parses a valid config file', () => {
+    const configPath = writeTempFile(
+      'valid.json',
+      JSON.stringify({
+        providers: {
+          anthropic: { type: 'anthropic', apiKey: 'sk-test-key' },
+        },
+      }),
+    );
+
+    const resolved = loadConfigFile(configPath);
+
+    expect(resolved.profile).toBe('terminal');
+    expect(resolved.executionMode).toBe('edge');
+    expect(resolved.edgeProvider.name).toBe('anthropic');
+    expect(resolved.edgeProvider.apiKey).toBe('sk-test-key');
+  });
+
+  it('expands environment variables in loaded config', () => {
+    process.env.NANOCLAW_LOADER_TEST_KEY = 'expanded-api-key';
+    const configPath = writeTempFile(
+      'envvar.json',
+      JSON.stringify({
+        providers: {
+          anthropic: {
+            type: 'anthropic',
+            apiKey: '${NANOCLAW_LOADER_TEST_KEY}',
+          },
+        },
+      }),
+    );
+
+    const resolved = loadConfigFile(configPath);
+    expect(resolved.edgeProvider.apiKey).toBe('expanded-api-key');
+
+    delete process.env.NANOCLAW_LOADER_TEST_KEY;
+  });
+
+  it('throws a descriptive error for missing file', () => {
+    const missingPath = path.join(
+      os.tmpdir(),
+      `nanoclaw-missing-${Date.now()}.json`,
+    );
+    expect(() => loadConfigFile(missingPath)).toThrow(
+      /not found|does not exist|ENOENT|no such file/i,
+    );
+  });
+
+  it('throws a descriptive error for invalid JSON', () => {
+    const configPath = writeTempFile('invalid.json', '{ not valid json }}}');
+    expect(() => loadConfigFile(configPath)).toThrow(/JSON|parse/i);
+  });
+
+  it('throws a descriptive error for valid JSON that is not a valid config', () => {
+    const configPath = writeTempFile(
+      'badconfig.json',
+      JSON.stringify({ providers: {} }),
+    );
+    expect(() => loadConfigFile(configPath)).toThrow(/at least one provider/i);
+  });
+});
+
+describe('loadConfigFromArgv', () => {
+  it('loads config from --config path', () => {
+    const configPath = writeTempFile(
+      'argv.json',
+      JSON.stringify({
+        providers: {
+          anthropic: { type: 'anthropic', apiKey: 'sk-argv-test' },
+        },
+      }),
+    );
+
+    const argv = ['--config', configPath];
+    const resolved = loadConfigFromArgv(argv);
+
+    expect(resolved.edgeProvider.name).toBe('anthropic');
+    expect(resolved.edgeProvider.apiKey).toBe('sk-argv-test');
+  });
+
+  it('loads config from default path when --config is not present', () => {
+    const origCwd = process.cwd();
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-cfgtest-'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'nanoclaw.config.json'),
+      JSON.stringify({
+        providers: {
+          anthropic: { type: 'anthropic', apiKey: 'sk-default-test' },
+        },
+      }),
+      'utf-8',
+    );
+
+    try {
+      process.chdir(tmpDir);
+      const resolved = loadConfigFromArgv([]);
+      expect(resolved.edgeProvider.apiKey).toBe('sk-default-test');
+    } finally {
+      process.chdir(origCwd);
+      try {
+        fs.rmSync(tmpDir, { recursive: true });
+      } catch {
+        // ignore
+      }
+    }
+  });
+});

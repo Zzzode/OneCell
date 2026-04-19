@@ -1,0 +1,30 @@
+import { describe, it, expect } from 'vitest'
+import { renderToString } from 'ink'
+import React from 'react'
+import { FooterBar } from './status-bar.js'
+
+describe('FooterBar', () => {
+  it('renders backend name', () => {
+    const output = renderToString(
+      <FooterBar backend="edge" agentCount={3} runningCount={1} />,
+    )
+    expect(output).toContain('edge')
+    expect(output).toContain('3 agents')
+  })
+
+  it('shows running count when > 0', () => {
+    const output = renderToString(
+      <FooterBar backend="edge" agentCount={3} runningCount={1} />,
+    )
+    expect(output).toContain('1 running')
+  })
+
+  it('omits agent and running count when 0', () => {
+    const output = renderToString(
+      <FooterBar backend="edge" agentCount={0} runningCount={0} />,
+    )
+    expect(output).toContain('edge')
+    expect(output).not.toContain('0 agents')
+    expect(output).not.toContain('0 running')
+  })
+})

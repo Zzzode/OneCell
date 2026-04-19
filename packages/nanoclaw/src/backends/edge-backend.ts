@@ -6,7 +6,7 @@ import {
   AgentRunInput,
   AgentRunOutput,
   ExecutionStartedCallback,
-} from '../agent-backend.js';
+} from '../framework/agent-backend.js';
 import {
   createToolOperation,
   getExecutionState,
@@ -17,22 +17,17 @@ import {
   EDGE_ALLOWED_TOOL_SET,
   EDGE_SHADOW_ALLOWED_TOOL_SET,
   deriveCapabilitiesFromTools,
-} from '../edge-capabilities.js';
-import { createPersistentExecutionEventHooks } from '../edge-event-dispatcher.js';
-import { localEdgeRunner, type EdgeRunner } from '../edge-runner.js';
-import { createSubprocessEdgeRunner } from '../edge-subprocess-runner.js';
+} from '../edge/edge-capabilities.js';
+import { createPersistentExecutionEventHooks } from '../edge/edge-event-dispatcher.js';
+import { localEdgeRunner, type EdgeRunner } from '../edge/edge-runner.js';
+import { createSubprocessEdgeRunner } from '../edge/edge-subprocess-runner.js';
 import { RegisteredGroup } from '../types.js';
-import {
-  EDGE_API_BASE_URL,
-  EDGE_API_KEY,
-  EDGE_MODEL,
-  EDGE_RUNNER_PROVIDER,
-} from '../config.js';
+import { getAppConfig } from '../config/config.js';
 import {
   ensureWorkspaceVersion,
   getWorkspaceManifest,
-} from '../workspace-service.js';
-import type { FrameworkWorker } from '../framework-worker.js';
+} from '../infra/workspace-service.js';
+import type { FrameworkWorker } from '../framework/framework-worker.js';
 
 const EDGE_MODEL_PROFILE = 'edge-local-dev';
 const EDGE_MAX_OUTPUT_BYTES = 64 * 1024;
@@ -161,6 +156,31 @@ function buildSystemPrompt(
   return instructions ? `${base}\n\n${instructions}` : base;
 }
 
+function ensureStringContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(
+        (b: unknown) =>
+          typeof b === 'object' &&
+          b !== null &&
+          'type' in (b as Record<string, unknown>) &&
+          (b as Record<string, unknown>).type === 'text' &&
+          typeof (b as Record<string, unknown>).text === 'string',
+      )
+      .map((b: unknown) => (b as { text: string }).text)
+      .join('');
+  }
+  if (content != null && typeof content === 'object') {
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return '';
+    }
+  }
+  return String(content ?? '');
+}
+
 function clampRecentMessageContent(content: string): string {
   if (content.length <= EDGE_RECENT_MESSAGE_MAX_ITEM_CHARS) {
     return content;
@@ -198,8 +218,8 @@ function buildRecentMessages(
       role: message.isBotMessage ? 'assistant' : 'user',
       content: clampRecentMessageContent(
         message.isBotMessage || message.isFromMe
-          ? message.content
-          : `${message.senderName}: ${message.content}`,
+          ? ensureStringContent(message.content)
+          : `${message.senderName}: ${ensureStringContent(message.content)}`,
       ),
     }));
 
@@ -226,7 +246,22 @@ function buildRecentMessages(
     return [{ role: 'user', content: input.prompt.trim() }];
   }
 
-  return selected.reverse();
+  const result = selected.reverse();
+
+  // Ensure alternating roles — consecutive same-role messages violate the
+  // Anthropic Messages API contract and cause 400 errors from some providers
+  // (e.g. DashScope). Merge consecutive same-role messages by joining content.
+  const alternation: typeof result = [];
+  for (const message of result) {
+    const prev = alternation[alternation.length - 1];
+    if (prev && prev.role === message.role) {
+      prev.content = `${prev.content}\n${message.content}`;
+    } else {
+      alternation.push({ ...message });
+    }
+  }
+
+  return alternation;
 }
 
 type ExecutionEventHooksFactory = (
@@ -242,6 +277,7 @@ function buildExecutionRequest(
   group: RegisteredGroup,
   input: AgentRunInput,
 ): ExecutionRequest {
+  const config = getAppConfig();
   const baseWorkspaceVersion =
     input.executionContext?.baseWorkspaceVersion ??
     ensureWorkspaceVersion(group.folder);
@@ -333,14 +369,16 @@ function buildExecutionRequest(
       maxOutputBytes: EDGE_MAX_OUTPUT_BYTES,
     },
     runner: {
-      provider:
-        EDGE_RUNNER_PROVIDER === 'anthropic' ||
-        EDGE_RUNNER_PROVIDER === 'openai'
-          ? EDGE_RUNNER_PROVIDER
-          : 'local',
-      ...(EDGE_API_BASE_URL ? { apiBaseUrl: EDGE_API_BASE_URL } : {}),
-      ...(EDGE_API_KEY ? { apiKey: EDGE_API_KEY } : {}),
-      ...(EDGE_MODEL ? { model: EDGE_MODEL } : {}),
+      provider: config.edgeProvider.type,
+      ...(config.edgeProvider.baseUrl
+        ? { apiBaseUrl: config.edgeProvider.baseUrl }
+        : {}),
+      ...(config.edgeProvider.apiKey
+        ? { apiKey: config.edgeProvider.apiKey }
+        : {}),
+      ...(config.edgeProvider.model
+        ? { model: config.edgeProvider.model }
+        : {}),
     },
     policy: {
       allowedTools,
@@ -370,9 +408,13 @@ function getExecutionControlDecision(
   }
 
   if (nowMs - startedAtMs >= request.limits.deadlineMs) {
+    const elapsedSec = Math.round((nowMs - startedAtMs) / 1000);
+    const detail = sawAnyEvent
+      ? `still active after ${elapsedSec}s (last event ${Math.round((nowMs - lastEventAtMs) / 1000)}s ago)`
+      : `no events received after ${elapsedSec}s`;
     return {
       code: 'deadline_exceeded',
-      message: `Edge execution exceeded deadline of ${request.limits.deadlineMs}ms.`,
+      message: `Edge execution exceeded deadline of ${Math.round(request.limits.deadlineMs / 1000)}s: ${detail}.`,
     };
   }
 
@@ -490,6 +532,7 @@ async function consumeExecutionEvents(
         await hooks?.onNeedsFallback?.(event);
         break;
       case 'tool_call':
+        await hooks?.onToolCall?.(event);
         if (
           event.tool === 'message.send' &&
           event.args &&
@@ -527,6 +570,7 @@ async function consumeExecutionEvents(
         }
         break;
       case 'tool_result':
+        await hooks?.onToolResult?.(event);
         deferredToolReceipt = buildDeferredToolReceipt(event);
         break;
       case 'output_delta':

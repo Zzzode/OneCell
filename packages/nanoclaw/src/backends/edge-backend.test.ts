@@ -1,18 +1,25 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type AgentRunOutput, type ExecutionEvent } from '../agent-backend.js';
+import {
+  type AgentRunOutput,
+  type ExecutionEvent,
+} from '../framework/agent-backend.js';
 import {
   _initTestDatabase,
   storeChatMetadata,
   storeMessageDirect,
 } from '../db.js';
-import { beginExecution, requestExecutionCancel } from '../execution-state.js';
+import {
+  beginExecution,
+  requestExecutionCancel,
+} from '../framework/execution-state.js';
 import { createEdgeBackend, buildExecutionRequest } from './edge-backend.js';
-import type { AgentRunInput } from '../agent-backend.js';
-import { GROUPS_DIR } from '../config.js';
+import type { AgentRunInput } from '../framework/agent-backend.js';
+import { GROUPS_DIR, initConfig } from '../config/config.js';
 import type { RegisteredGroup } from '../types.js';
 
 const group: RegisteredGroup = {
@@ -39,14 +46,43 @@ const input: AgentRunInput = {
 describe('edgeBackend', () => {
   const groupPath = path.join(GROUPS_DIR, group.folder);
 
+  let configDir: string;
+
   beforeEach(() => {
     vi.restoreAllMocks();
     _initTestDatabase();
     fs.mkdirSync(groupPath, { recursive: true });
+
+    configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-edge-test-'));
+    const configPath = path.join(configDir, 'nanoclaw.config.json');
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        profile: 'terminal',
+        executionMode: 'edge',
+        edgeRunnerMode: 'edgejs',
+        providers: {
+          anthropic: {
+            type: 'anthropic',
+            apiKey: 'sk-test-edge-backend',
+          },
+        },
+        edge: {
+          provider: 'anthropic',
+          enableTools: true,
+          disableFallback: false,
+        },
+      }),
+      'utf-8',
+    );
+    initConfig(configPath);
   });
 
   afterEach(() => {
     fs.rmSync(groupPath, { recursive: true, force: true });
+    if (configDir) {
+      fs.rmSync(configDir, { recursive: true, force: true });
+    }
   });
 
   it('builds a concrete execution request protocol payload', () => {
@@ -592,7 +628,8 @@ describe('edgeBackend', () => {
       await expect(runPromise).resolves.toEqual({
         status: 'error',
         result: null,
-        error: 'Edge execution exceeded deadline of 100ms.',
+        error:
+          'Edge execution exceeded deadline of 0s: still active after 0s (last event 0s ago).',
       });
     } finally {
       vi.useRealTimers();
@@ -613,12 +650,14 @@ describe('edgeBackend', () => {
       });
 
       const backend = createEdgeBackend({
+        // eslint-disable-next-line require-yield
         async *runTurn(_request, options) {
           await new Promise<void>((resolve) => {
             options?.signal?.addEventListener('abort', () => resolve(), {
               once: true,
             });
           });
+          return;
         },
       });
 

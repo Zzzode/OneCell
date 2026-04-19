@@ -1108,10 +1108,11 @@ add_custom_target(build-napi-wasmer-cli
 )
 
 # ── test-wasix-napi-cli ─────────────────────────────────────────────
+file(WRITE "${CMAKE_BINARY_DIR}/wasix_smoke.js" "console.log(42)\n")
 add_custom_target(test-wasix-napi-cli
   COMMAND "${EDGE_NAPI_WASMER_DIR}/target/debug/napi_wasmer"
           "${PROJECT_ROOT}/build-wasix/edgejs.wasm"
-          -e "console.log('hello world!');"
+          "${CMAKE_BINARY_DIR}/wasix_smoke.js"
   COMMENT "Smoke test: napi_wasmer with WASIX wasm"
 )
 
@@ -1151,24 +1152,26 @@ add_custom_target(clean-dist
   COMMENT "Cleaning dist directory"
 )
 
-add_custom_target(dist
-  COMMAND ${CMAKE_COMMAND} -E rm -rf "${EDGE_DIST_DIR}"
-  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/edge.zip"
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${EDGE_DIST_BIN_DIR}"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "$<TARGET_FILE:edge>" "${EDGE_DIST_BIN_DIR}/edge"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "$<TARGET_FILE:edgeenv>" "${EDGE_DIST_BIN_DIR}/edgeenv"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-    "${PROJECT_ROOT}/bin-compat" "${EDGE_DIST_DIR}/bin-compat"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${PROJECT_ROOT}/README.md" "${EDGE_DIST_DIR}/README.md"
-  COMMAND ${CMAKE_COMMAND} -E tar cf "${CMAKE_BINARY_DIR}/edge.zip" --format=zip
-    "${EDGE_DIST_DIR}/bin" "${EDGE_DIST_DIR}/bin-compat" "${EDGE_DIST_DIR}/README.md"
-  DEPENDS edge edgeenv
-  WORKING_DIRECTORY "${PROJECT_ROOT}"
-  COMMENT "Creating distribution package"
-)
+if(NOT EDGE_IS_WASIX_TARGET)
+  add_custom_target(dist
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${EDGE_DIST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/edge.zip"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${EDGE_DIST_BIN_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "$<TARGET_FILE:edge>" "${EDGE_DIST_BIN_DIR}/edge"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "$<TARGET_FILE:edgeenv>" "${EDGE_DIST_BIN_DIR}/edgeenv"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${PROJECT_ROOT}/bin-compat" "${EDGE_DIST_DIR}/bin-compat"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${PROJECT_ROOT}/README.md" "${EDGE_DIST_DIR}/README.md"
+    COMMAND ${CMAKE_COMMAND} -E tar cf "${CMAKE_BINARY_DIR}/edge.zip" --format=zip
+      "${EDGE_DIST_DIR}/bin" "${EDGE_DIST_DIR}/bin-compat" "${EDGE_DIST_DIR}/README.md"
+    DEPENDS edge edgeenv
+    WORKING_DIRECTORY "${PROJECT_ROOT}"
+    COMMENT "Creating distribution package"
+  )
+endif()
 
 # ── dist-wasix ───────────────────────────────────────────────────────
 add_custom_target(dist-wasix

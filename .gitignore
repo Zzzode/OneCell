@@ -33,19 +33,15 @@ Thumbs.db
 *.log
 logs/
 
-# Runtime data
-data/
-store/
-groups/
-
 # Temp files
 .tmp-*
 
 # AI tooling artifacts
 .claude/
 .mcp.json
+.superpowers
 
-# edgejs — C++ / build artifacts
+# C++ / edgejs build artifacts (repo root only)
 /napi/v8/build*
 /napi/target
 /napi/wasmer/target

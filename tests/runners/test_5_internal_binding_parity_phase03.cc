@@ -28,7 +28,7 @@ const config = internalBinding('config');
 assert.ok(config && typeof config === 'object');
 assert.strictEqual(typeof config.getDefaultLocale, 'function');
 assert.strictEqual(config.hasOpenSSL, !!(process.versions && process.versions.openssl));
-assert.strictEqual(process.versions.edge, ')JS" EDGE_VERSION_STRING R"JS(');
+assert.ok(process.versions.edge.startsWith(')JS" EDGE_VERSION_BASE_STRING R"JS('));
 assert.strictEqual(typeof config.bits, 'number');
 assert.ok(config.bits === 32 || config.bits === 64);
 const locale = config.getDefaultLocale();

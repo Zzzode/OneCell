@@ -1,0 +1,28 @@
+{
+  "profile": "claw",
+  "executionMode": "edge",
+  "edgeRunnerMode": "edgejs",
+  "providers": {
+    "anthropic": {
+      "type": "anthropic",
+      "baseUrl": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+      "apiKey": "sk-sp-ae8ba5827cc0473784d0098a1d7b4615",
+      "model": "glm-5"
+    },
+    "openai": {
+      "type": "openai",
+      "apiKey": "sk-sp-ae8ba5827cc0473784d0098a1d7b4615",
+      "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
+      "model": "glm-5"
+    }
+  },
+  "edge": {
+    "provider": "anthropic",
+    "enableTools": true,
+    "disableFallback": false
+  },
+  "container": {
+    "provider": "anthropic",
+    "maxConcurrent": 5
+  }
+}
