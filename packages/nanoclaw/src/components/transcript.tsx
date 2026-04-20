@@ -9,6 +9,7 @@ interface TranscriptProps {
   entries: TerminalPanelTranscriptEntry[]
   width?: number
   maxLines?: number
+  offset?: number
   verbose?: boolean
 }
 
@@ -17,7 +18,7 @@ function UserLine({ text }: { text: string }) {
     <Box>
       <Text color={theme.brand}>{'❯'}</Text>
       <Text> </Text>
-      <Text color={theme.text}>{text}</Text>
+      <Text color={theme.userBubble}>{text}</Text>
     </Box>
   )
 }
@@ -25,26 +26,35 @@ function UserLine({ text }: { text: string }) {
 function AssistantLine({ text }: { text: string }) {
   return (
     <Box>
-      <Text color={theme.agentCyan}>⏺</Text>
+      <Text color={theme.assistantBubble}>●</Text>
       <Text> </Text>
-      <Text color={theme.text}>{text}</Text>
+      <Text color={theme.assistantBubble}>{text}</Text>
     </Box>
   )
 }
 
-function StepLine({ text, isLast, width }: { text: string; isLast: boolean; width?: number }) {
+function StepLine({
+  text,
+  isLast,
+  width,
+  color,
+}: {
+  text: string;
+  isLast: boolean;
+  width?: number;
+  color?: string;
+}) {
   const prefix = isLast ? '  └─ ' : '  ├─ '
   const maxLen = (width ?? 100) - prefix.length - 1
   const isFailure = text.startsWith('执行失败：') || text.startsWith('执行失败,')
   if (isFailure) {
-    // For failure messages, wrap to show the full text
     const lines = wrapText(text, maxLen)
     return (
       <Box flexDirection="column">
         {lines.map((line, i) => (
           <Box key={i}>
-            <Text color={theme.subtle}>{i === 0 ? prefix : '    '}</Text>
-            <Text color="red">{line}</Text>
+            <Text color={theme.toolStepPrefix}>{i === 0 ? prefix : '    '}</Text>
+            <Text color={theme.error}>{line}</Text>
           </Box>
         ))}
       </Box>
@@ -53,8 +63,8 @@ function StepLine({ text, isLast, width }: { text: string; isLast: boolean; widt
   const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text
   return (
     <Box>
-      <Text color={theme.subtle}>{prefix}</Text>
-      <Text color={theme.inactive}>{display}</Text>
+      <Text color={theme.toolStepPrefix}>{prefix}</Text>
+      <Text color={color ?? theme.inactive}>{display}</Text>
     </Box>
   )
 }
@@ -87,191 +97,230 @@ function wrapText(text: string, maxLen: number): string[] {
   return lines
 }
 
-type ToolCategory = 'read' | 'search' | 'write' | 'http' | 'js' | 'message' | 'task' | 'other';
+type ToolCategory = 'read' | 'search' | 'write' | 'js' | 'http' | 'message' | 'task' | 'other'
 
 function classifyTool(tool: string): ToolCategory {
-  if (tool === 'workspace.read' || tool === 'workspace.list') return 'read';
-  if (tool === 'workspace.search') return 'search';
-  if (tool === 'workspace.write' || tool === 'workspace.apply_patch') return 'write';
-  if (tool === 'http.fetch') return 'http';
-  if (tool === 'js.exec') return 'js';
-  if (tool === 'message.send') return 'message';
-  if (tool.startsWith('task.')) return 'task';
-  return 'other';
+  if (tool === 'workspace.read' || tool === 'workspace.list') return 'read'
+  if (tool === 'workspace.search') return 'search'
+  if (tool === 'workspace.write' || tool === 'workspace.apply_patch') return 'write'
+  if (tool === 'js.exec') return 'js'
+  if (tool === 'http.fetch') return 'http'
+  if (tool === 'message.send') return 'message'
+  if (tool.startsWith('task.')) return 'task'
+  return 'other'
 }
 
-function buildCollapsedSummary(entries: TerminalPanelTranscriptEntry[]): string {
-  const counts: Record<ToolCategory, number> = {
-    read: 0, search: 0, write: 0, http: 0, js: 0,
-    message: 0, task: 0, other: 0,
-  };
-  let errors = 0;
-  let hasRunning = false;
-  for (const entry of entries) {
-    if (entry.role !== 'tool' || !entry.toolData) continue;
-    const cat = classifyTool(entry.toolData.tool);
-    counts[cat]++;
-    if (entry.toolData.status === 'error') errors++;
-    if (entry.toolData.status === 'running') hasRunning = true;
-  }
-  const parts: string[] = [];
-  if (counts.read > 0) parts.push(`Read ${counts.read} file${counts.read > 1 ? 's' : ''}`);
-  if (counts.search > 0) parts.push(`searched ${counts.search} pattern${counts.search > 1 ? 's' : ''}`);
-  if (counts.write > 0) parts.push(`wrote ${counts.write} file${counts.write > 1 ? 's' : ''}`);
-  if (counts.http > 0) parts.push(`fetched ${counts.http} URL${counts.http > 1 ? 's' : ''}`);
-  if (counts.js > 0) parts.push(`executed ${counts.js} JS snippet${counts.js > 1 ? 's' : ''}`);
-  if (counts.message > 0) parts.push(`sent ${counts.message} message${counts.message > 1 ? 's' : ''}`);
-  if (counts.task > 0) parts.push('managed tasks');
-  if (counts.other > 0) parts.push(`used ${counts.other} tool${counts.other > 1 ? 's' : ''}`);
-
-  const suffix = hasRunning ? '...' : (errors > 0 ? `, ${errors} failed` : '');
-  return parts.join(', ') + suffix;
-}
-
-function formatResultSummary(result: unknown, maxLen: number): string {
-  if (result === undefined) return '';
-  if (typeof result === 'string') {
-    return result.length > maxLen ? result.slice(0, maxLen - 1) + '\u2026' : result;
-  }
-  try {
-    const str = JSON.stringify(result);
-    return str.length > maxLen ? str.slice(0, maxLen - 1) + '\u2026' : str;
-  } catch (_err: unknown) {
-    return '';
-  }
-}
-
-function formatValuePreview(value: unknown, maxLen: number): string {
-  if (value === undefined) return 'undefined';
-  if (value === null) return 'null';
-  if (typeof value === 'string') {
-    return value.length > maxLen ? value.slice(0, maxLen - 1) + '\u2026' : value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) {
-    const str = JSON.stringify(value);
-    return str.length > maxLen ? str.slice(0, maxLen - 1) + '\u2026' : str;
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length > 0 && entries.length <= 8) {
-      const formatted = entries.map(([k, v]) => {
-        const vs = typeof v === 'string' ? v : JSON.stringify(v);
-        return `${k}: ${vs}`;
-      }).join(', ');
-      if (formatted.length <= maxLen) return formatted;
-    }
-    try {
-      const str = JSON.stringify(value);
-      return str.length > maxLen ? str.slice(0, maxLen - 1) + '\u2026' : str;
-    } catch {
-      return '';
-    }
-  }
-  return String(value);
-}
-
-function formatVerboseToolLine(entry: TerminalPanelTranscriptEntry, maxWidth: number): string {
-  const td = entry.toolData!;
-  const indent = '    ';
-  const maxContent = maxWidth - indent.length - 1;
+function formatToolLabel(entry: TerminalPanelTranscriptEntry): string {
+  const td = entry.toolData
+  if (!td) return entry.text.trim() || 'Tool call'
 
   switch (classifyTool(td.tool)) {
     case 'read': {
-      const path = typeof td.args.path === 'string' ? td.args.path : '?';
-      if (td.status === 'error') return `${indent}Read ${path} — error`;
-      const resultStr = formatResultSummary(td.result, 40);
-      return `${indent}Read ${path}${resultStr ? ` (${resultStr})` : ''}`;
+      const path = typeof td.args.path === 'string' ? td.args.path : '?'
+      return `Reading ${path}`
     }
     case 'search': {
-      const pattern = typeof td.args.pattern === 'string' ? td.args.pattern : '?';
-      const path = typeof td.args.path === 'string' ? ` in ${td.args.path}` : '';
-      if (td.status === 'error') return `${indent}Search "${pattern}"${path} — error`;
-      const resultStr = formatResultSummary(td.result, 40);
-      return `${indent}Search "${pattern}"${path}${resultStr ? ` (${resultStr})` : ''}`;
+      const pattern = typeof td.args.pattern === 'string' ? td.args.pattern : '?'
+      return `Searching "${pattern}"`
     }
     case 'write': {
-      const path = typeof td.args.path === 'string' ? td.args.path : '?';
-      if (td.status === 'error') return `${indent}Write ${path} — error`;
-      return `${indent}Write ${path}`;
-    }
-    case 'http': {
-      const url = typeof td.args.url === 'string' ? td.args.url : '?';
-      if (td.status === 'error') return `${indent}Fetch ${url} — error`;
-      const resultStr = formatResultSummary(td.result, 40);
-      return `${indent}Fetch ${url}${resultStr ? ` (${resultStr})` : ''}`;
+      const path = typeof td.args.path === 'string' ? td.args.path : '?'
+      return `Writing ${path}`
     }
     case 'js': {
-      let resultStr: string;
-      if (td.status === 'error') {
-        const errPayload =
-          typeof td.result === 'object' && td.result !== null && 'error' in (td.result as Record<string, unknown>)
-            ? String((td.result as Record<string, unknown>).error)
-            : formatResultSummary(td.result, maxContent);
-        resultStr = ` — error: ${errPayload}`;
-      } else if (td.status === 'success') {
-        const raw = td.result;
-        const value =
-          typeof raw === 'object' && raw !== null && 'value' in (raw as Record<string, unknown>)
-            ? (raw as Record<string, unknown>).value
-            : raw;
-        resultStr = ` \u2192 ${formatValuePreview(value, maxContent - 12)}`;
-      } else {
-        resultStr = '...';
-      }
-      let line = `${indent}js.exec${resultStr}`;
-      const code = typeof td.args.code === 'string' ? td.args.code : '';
-      if (code) {
-        const codeLines = code.split('\n').filter(Boolean);
-        const maxCodeLines = 3;
-        for (let i = 0; i < Math.min(codeLines.length, maxCodeLines); i++) {
-          const cl = codeLines[i];
-          const truncated = cl.length > maxContent
-            ? cl.slice(0, maxContent - 1) + '\u2026'
-            : cl;
-          line += '\n' + indent + truncated;
-        }
-        const remaining = codeLines.length - maxCodeLines;
-        if (remaining > 0) {
-          line += `\n${indent}\u2026 (+${remaining} more lines)`;
-        }
-      }
-      return line;
+      const code = typeof td.args.code === 'string' ? td.args.code.trim() : ''
+      const preview = code ? code.replace(/\s+/g, ' ').slice(0, 48) : ''
+      return `Executing JavaScript(${preview || 'script'})`
     }
-    case 'message': {
-      const text = typeof td.args.text === 'string'
-        ? (td.args.text.length > 40 ? td.args.text.slice(0, 39) + '\u2026' : td.args.text)
-        : '?';
-      return `${indent}Send "${text}"`;
+    case 'http': {
+      const url = typeof td.args.url === 'string' ? td.args.url : '?'
+      return `Fetching ${url}`
     }
+    case 'message':
+      return 'Sending message'
     case 'task':
-      return `${indent}${td.tool}(${formatResultSummary(td.result, 30)})`;
+      return `Running ${td.tool}`
     default:
-      return `${indent}${td.tool}(${entry.text})`;
+      return entry.text.trim() || td.tool
   }
 }
 
-export function Transcript({ entries, width, maxLines = 12, verbose = false }: TranscriptProps) {
-  if (entries.length === 0) {
-    return <Text color={theme.subtle}>No transcript yet.</Text>;
+function formatResultSummary(result: unknown, maxLen: number): string {
+  if (result === undefined) return ''
+  if (typeof result === 'string') {
+    return result.length > maxLen ? result.slice(0, maxLen - 1) + '\u2026' : result
+  }
+  try {
+    const str = JSON.stringify(result)
+    return str.length > maxLen ? str.slice(0, maxLen - 1) + '\u2026' : str
+  } catch (_err: unknown) {
+    return ''
+  }
+}
+
+function formatToolCallLine(entry: TerminalPanelTranscriptEntry, maxLen: number): string {
+  const text = formatToolLabel(entry)
+  return text.length > maxLen ? text.slice(0, maxLen - 1) + '\u2026' : text
+}
+
+function formatToolResultLine(entry: TerminalPanelTranscriptEntry, maxLen: number): string {
+  const td = entry.toolData
+  if (!td) return ''
+
+  if (td.status === 'error') {
+    const errText =
+      typeof td.result === 'object' && td.result !== null && 'error' in (td.result as Record<string, unknown>)
+        ? String((td.result as Record<string, unknown>).error)
+        : formatResultSummary(td.result, maxLen)
+    return `error: ${errText || 'unknown error'}`
   }
 
-  const visible = entries.slice(-maxLines);
-  const lines: React.ReactNode[] = [];
-  let pendingSteps: TerminalPanelTranscriptEntry[] = [];
-  let lastRole: 'user' | 'assistant' | 'system' | 'tool' | null = null;
+  const category = classifyTool(td.tool)
+  if (category === 'search' && typeof td.result === 'object' && td.result !== null && 'matches' in (td.result as Record<string, unknown>)) {
+    const matches = (td.result as Record<string, unknown>).matches
+    if (Array.isArray(matches)) {
+      return matches.length === 0 ? 'No matches' : `${matches.length} matches`
+    }
+  }
+
+  if (category === 'read' && typeof td.result === 'object' && td.result !== null && 'content' in (td.result as Record<string, unknown>)) {
+    const content = (td.result as Record<string, unknown>).content
+    if (typeof content === 'string') {
+      const lineCount = content.length === 0 ? 0 : content.split('\n').length
+      return `${lineCount} lines`
+    }
+  }
+
+  if (category === 'js') {
+    const raw = td.result
+    const value =
+      typeof raw === 'object' && raw !== null && 'value' in (raw as Record<string, unknown>)
+        ? (raw as Record<string, unknown>).value
+        : raw
+    const text = formatResultSummary(value, maxLen)
+    return text || 'done'
+  }
+
+  const text = formatResultSummary(td.result, maxLen)
+  return text || 'done'
+}
+
+function formatToolBodyLines(
+  entry: TerminalPanelTranscriptEntry,
+  maxLen: number,
+  detailed: boolean,
+): string[] {
+  const td = entry.toolData
+  if (!td || td.status === 'running') return []
+
+  const lines: string[] = []
+  const resultLine = formatToolResultLine(entry, maxLen)
+  if (resultLine) lines.push(resultLine)
+
+  if (detailed && typeof td.args.code === 'string') {
+    const codeLines = td.args.code.split('\n').filter(Boolean)
+    const maxCodeLines = 3
+    for (let i = 0; i < Math.min(codeLines.length, maxCodeLines); i++) {
+      const line = codeLines[i]!
+      lines.push(line.length > maxLen ? line.slice(0, maxLen - 1) + '\u2026' : line)
+    }
+    const remaining = codeLines.length - maxCodeLines
+    if (remaining > 0) lines.push(`\u2026 (+${remaining} more lines)`)
+  }
+
+  return lines
+}
+
+function ToolLine({
+  call,
+  bodyLines,
+  status,
+}: {
+  call: string;
+  bodyLines: string[];
+  status?: 'running' | 'success' | 'error';
+}) {
+  const headColor = status === 'error' ? theme.error : theme.toolBubble
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text color={theme.agentCyan}>○</Text>
+        <Text> </Text>
+        <Text color={headColor}>{call}</Text>
+      </Box>
+      {bodyLines.map((line, i) => (
+        <Box key={i}>
+          <Text color={theme.toolStepPrefix}>{i === 0 ? '  ⎿ ' : '    '}</Text>
+          <Text color={status === 'error' ? theme.error : theme.textMuted}>{line}</Text>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+
+function mergeAssistantTurns(entries: TerminalPanelTranscriptEntry[]): TerminalPanelTranscriptEntry[] {
+  const merged: TerminalPanelTranscriptEntry[] = []
+  for (const entry of entries) {
+    const prev = merged[merged.length - 1]
+    if (
+      entry.role === 'assistant' &&
+      prev &&
+      prev.role === 'assistant' &&
+      entry.turnId &&
+      prev.turnId === entry.turnId
+    ) {
+      prev.text = `${prev.text}\n${entry.text}`
+      prev.at = entry.at
+      continue
+    }
+    merged.push({ ...entry })
+  }
+  return merged
+}
+
+function wrapPlainText(text: string, maxLen: number): string[] {
+  const rows: string[] = []
+  const lines = text.split('\n')
+  for (const line of lines) {
+    if (line.length === 0) {
+      rows.push('')
+      continue
+    }
+    for (let i = 0; i < line.length; i += maxLen) {
+      rows.push(line.slice(i, i + maxLen))
+    }
+  }
+  return rows.length > 0 ? rows : ['']
+}
+
+export function Transcript({ entries, width, maxLines = 12, offset = 0, verbose = false }: TranscriptProps) {
+  if (entries.length === 0) {
+    return <Text color={theme.toolStepPrefix}>No transcript yet.</Text>;
+  }
+
+  const mergedEntries = mergeAssistantTurns(entries)
+  const bubbleMaxLen = Math.max(1, (width ?? 100) - 4)
+  const renderedRows: React.ReactNode[] = []
+  let pendingSteps: TerminalPanelTranscriptEntry[] = []
 
   function flushSteps() {
     if (pendingSteps.length === 0) return;
 
-    const toolEntries = pendingSteps.filter((e) => e.role === 'tool');
+    const toolEntries = pendingSteps
+      .filter((e) => e.role === 'tool')
+      .sort((a, b) => {
+        const leftOrder = a.toolData?.order ?? Number.MAX_SAFE_INTEGER
+        const rightOrder = b.toolData?.order ?? Number.MAX_SAFE_INTEGER
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder
+        return a.at.localeCompare(b.at)
+      });
     const systemEntries = pendingSteps.filter((e) => e.role === 'system');
 
-    // Render system entries as before
     for (const entry of systemEntries) {
-      lines.push(
+      renderedRows.push(
         <StepLine
-          key={`step-${lines.length}`}
+          key={`step-${renderedRows.length}`}
           text={entry.text}
           isLast={pendingSteps.indexOf(entry) === pendingSteps.length - 1 && toolEntries.length === 0}
           width={width}
@@ -279,72 +328,62 @@ export function Transcript({ entries, width, maxLines = 12, verbose = false }: T
       );
     }
 
-    // Render tool entries
     if (toolEntries.length > 0) {
-      if (verbose) {
-        for (let i = 0; i < toolEntries.length; i++) {
-          const entry = toolEntries[i];
-          const isLast = i === toolEntries.length - 1;
-          const verboseText = formatVerboseToolLine(entry, width ?? 100);
-          const verboseLines = verboseText.split('\n');
-          for (let j = 0; j < verboseLines.length; j++) {
-            const prefix = j === 0
-              ? (isLast ? '  └─ ' : '  ├─ ')
-              : '  │   ';
-            const color = entry.toolData?.status === 'error' ? 'red' : theme.inactive;
-            lines.push(
-              <Box key={`tool-${lines.length}`}>
-                <Text color={theme.subtle}>{prefix}</Text>
-                <Text color={color}>{verboseLines[j]}</Text>
-              </Box>,
-            );
-          }
+      for (const entry of toolEntries) {
+        if (renderedRows.length > 0) {
+          renderedRows.push(<Box key={`tool-gap-${renderedRows.length}`} height={1} />)
         }
-      } else {
-        // Collapsed: aggregate tool entries into one summary line
-        const summary = buildCollapsedSummary(toolEntries);
-        const hint = ' (ctrl+o to expand)';
-        lines.push(
-          <StepLine
-            key={`tool-agg-${lines.length}`}
-            text={summary + hint}
-            isLast={true}
-            width={width}
+        renderedRows.push(
+          <ToolLine
+            key={`tool-${renderedRows.length}`}
+            call={formatToolCallLine(entry, (width ?? 100) - 4)}
+            bodyLines={formatToolBodyLines(entry, (width ?? 100) - 8, verbose)}
+            status={entry.toolData?.status}
           />,
-        );
+        )
       }
     }
 
     pendingSteps = [];
   }
 
-  for (const entry of visible) {
+  for (const entry of mergedEntries) {
     if (entry.role === 'system' || entry.role === 'tool') {
       pendingSteps.push(entry);
     } else {
       flushSteps();
       if (entry.role === 'user') {
-        if (lines.length > 0) {
-          lines.push(
-            <Box key={`sep-${lines.length}`} height={1} />,
-          );
+        if (renderedRows.length > 0) {
+          renderedRows.push(
+            <Text key={`sep-${renderedRows.length}`} color={theme.toolStepPrefix}>
+              {`  ${'─'.repeat(Math.max(1, (width ?? 100) - 4))}`}
+            </Text>,
+          )
         }
-        lines.push(<UserLine key={lines.length} text={entry.text} />);
-        lastRole = 'user';
+        for (const row of wrapPlainText(entry.text, bubbleMaxLen)) {
+          renderedRows.push(<UserLine key={`user-${renderedRows.length}`} text={row} />)
+        }
       } else {
-        if (lastRole === 'user') {
-          lines.push(<Box key={`gap-${lines.length}`} height={1} />);
+        if (renderedRows.length > 0) {
+          renderedRows.push(<Box key={`gap-${renderedRows.length}`} height={1} />)
         }
-        lines.push(<AssistantLine key={lines.length} text={entry.text} />);
-        lastRole = 'assistant';
+        for (const row of wrapPlainText(entry.text, bubbleMaxLen)) {
+          renderedRows.push(<AssistantLine key={`assistant-${renderedRows.length}`} text={row} />)
+        }
       }
     }
   }
   flushSteps();
 
+  const maxOffset = Math.max(0, renderedRows.length - maxLines)
+  const safeOffset = Math.min(maxOffset, Math.max(0, offset))
+  const visibleEnd = Math.max(0, renderedRows.length - safeOffset)
+  const visibleStart = Math.max(0, visibleEnd - maxLines)
+  const visibleRows = renderedRows.slice(visibleStart, visibleEnd)
+
   return (
     <Box flexDirection="column">
-      {lines}
+      {visibleRows}
     </Box>
   );
 }

@@ -28,6 +28,8 @@ import {
 } from '../db.js';
 import { buildFrameworkObservabilitySnapshot } from '../framework/framework-observability.js';
 import {
+  createTranscriptEntry,
+  normalizeToolTranscriptEntry,
   type TerminalPanelTranscriptEntry,
 } from '../terminal/terminal-panel.js';
 import {
@@ -90,6 +92,9 @@ function setActiveTerminalChannel(channel: TerminalChannel): void {
 let terminalEvents: Array<{ at: string; text: string }> = [];
 let terminalReplies: Array<{ at: string; text: string }> = [];
 let terminalTranscript: TerminalPanelTranscriptEntry[] = [];
+let terminalTurnCounter = 0;
+let activeTerminalTurnId: string | null = null;
+let terminalToolOrder = 0;
 
 function terminalEventTail(limit: number): string[] {
   return terminalEvents.slice(-limit).map((entry) => entry.text);
@@ -109,6 +114,20 @@ function modelLabel(): string {
     return EDGE_ANTHROPIC_MODEL || 'default';
   }
   return EDGE_MODEL || 'default';
+}
+
+function beginTerminalTurn(): string {
+  terminalTurnCounter += 1;
+  activeTerminalTurnId = `turn:${terminalTurnCounter}`;
+  terminalToolOrder = 0;
+  return activeTerminalTurnId;
+}
+
+function currentTerminalTurnId(): string {
+  if (!activeTerminalTurnId) {
+    return beginTerminalTurn();
+  }
+  return activeTerminalTurnId;
 }
 
 function terminalTaskSnapshot() {
@@ -284,12 +303,22 @@ function recordTerminalReply(text: string): void {
   }
 }
 
+function isExecutionLifecycleEvent(text: string): boolean {
+  return (
+    text.startsWith('执行开始：') ||
+    text.startsWith('执行完成：') ||
+    text.startsWith('execution started:') ||
+    text.startsWith('execution completed:')
+  );
+}
+
 function recordTerminalTranscript(
   role: TerminalPanelTranscriptEntry['role'],
   text: string,
-): void {
+  extras?: Pick<TerminalPanelTranscriptEntry, 'turnId'>,
+): boolean {
   const normalized = text.trim();
-  if (!normalized) return;
+  if (!normalized) return false;
   const at = new Date().toISOString();
   // Check recent entries for duplicates, not just the last one.
   // System/tool events may be interleaved between duplicate submissions.
@@ -298,26 +327,35 @@ function recordTerminalTranscript(
     const entry = terminalTranscript[i]!;
     if (entry.role === role && entry.text === normalized) {
       entry.at = at;
-      return;
+      entry.turnId = extras?.turnId ?? entry.turnId;
+      return false;
     }
   }
-  terminalTranscript.push({ at, role, text: normalized });
+  terminalTranscript.push(
+    createTranscriptEntry({
+      at,
+      role,
+      text: normalized,
+      turnId: extras?.turnId,
+    }),
+  );
   if (terminalTranscript.length > TERMINAL_TRANSCRIPT_LIMIT) {
     terminalTranscript = terminalTranscript.slice(-TERMINAL_TRANSCRIPT_LIMIT);
   }
+  return true;
 }
 
 function recordTerminalToolEntry(
   text: string,
   toolData: import('../terminal/terminal-panel.js').ToolTranscriptEntry,
 ): import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry {
-  const at = new Date().toISOString();
-  const entry: import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry = {
-    at,
+  const normalizedTool = normalizeToolTranscriptEntry(toolData);
+  const entry = createTranscriptEntry({
     role: 'tool',
     text,
-    toolData,
-  };
+    toolData: normalizedTool,
+    turnId: normalizedTool.turnId,
+  });
   terminalTranscript.push(entry);
   if (terminalTranscript.length > TERMINAL_TRANSCRIPT_LIMIT) {
     terminalTranscript = terminalTranscript.slice(-TERMINAL_TRANSCRIPT_LIMIT);
@@ -335,6 +373,8 @@ function clearTerminalReplyLog(): void {
 
 function clearTerminalTranscriptLog(): void {
   terminalTranscript = [];
+  activeTerminalTurnId = null;
+  terminalToolOrder = 0;
 }
 
 export function buildTerminalLogsSummary(limit = DEFAULT_LOG_TAIL): string {
@@ -581,7 +621,58 @@ class TerminalChannel implements Channel {
   private typingByJid = new Set<string>();
   private inkInstance: ReturnType<typeof render> | null = null;
   private latestSystemEvent: string | null = null;
+  private latestSystemEventAt: number | null = null;
   private latestAssistantMessage: string | null = null;
+  private transcriptOffset = 0;
+
+  private setLatestSystemEvent(text: string | null): void {
+    this.latestSystemEvent = text;
+    this.latestSystemEventAt = text ? Date.now() : null;
+  }
+
+  private clearExpiredSystemNotice(): void {
+    if (!this.latestSystemEventAt) return;
+    if (Date.now() - this.latestSystemEventAt > 4000) {
+      this.setLatestSystemEvent(null);
+    }
+  }
+
+  private transcriptWindowLines(): number {
+    const rows = process.stdout.rows ?? 24;
+    return Math.max(6, rows - 12);
+  }
+
+  private setTranscriptOffset(next: number): void {
+    this.transcriptOffset = Math.max(0, next);
+  }
+
+  private onTranscriptAppended(count = 1): void {
+    if (this.transcriptOffset === 0) return;
+    this.setTranscriptOffset(this.transcriptOffset + Math.max(1, count));
+  }
+
+  private estimateTranscriptLines(text: string): number {
+    const width = process.stdout.columns ?? 100;
+    const maxLen = Math.max(8, width - 6);
+    return text
+      .split('\n')
+      .reduce((sum, line) => sum + Math.max(1, Math.ceil(Math.max(1, line.length) / maxLen)), 0);
+  }
+
+  private scrollTranscriptBy(delta: number): void {
+    if (!Number.isFinite(delta) || delta === 0) return;
+    const prev = this.transcriptOffset;
+    this.setTranscriptOffset(prev + delta);
+    if (this.transcriptOffset !== prev) {
+      this.renderScreen();
+    }
+  }
+
+  private scrollTranscriptPage(direction: 1 | -1): void {
+    const step = Math.max(1, this.transcriptWindowLines() - 2);
+    this.scrollTranscriptBy(direction > 0 ? step : -step);
+  }
+
   private sidePanel: {
     isOpen: boolean;
     tab: TerminalSidePanelTab;
@@ -602,6 +693,7 @@ class TerminalChannel implements Channel {
 
   async connect(): Promise<void> {
     this.connected = true;
+    this.transcriptOffset = 0;
     setActiveTerminalChannel(this);
     silenceLogger();
     clearConversationMessages(TERMINAL_GROUP_JID);
@@ -631,7 +723,7 @@ class TerminalChannel implements Channel {
       this.renderScreen();
       return;
     }
-    this.latestSystemEvent = '已请求打断当前执行';
+    this.setLatestSystemEvent('已请求打断当前执行');
     this.openOverlay('interrupt', '已请求打断当前执行。');
     await this.opts.onCancel?.(TERMINAL_GROUP_FOLDER);
   }
@@ -671,9 +763,11 @@ class TerminalChannel implements Channel {
     }
 
     const now = new Date().toISOString();
+    const turnId = beginTerminalTurn();
     this.lastAssistantMessageByJid.delete(TERMINAL_GROUP_JID);
     this.closeOverlay();
-    recordTerminalTranscript('user', text);
+    const appended = recordTerminalTranscript('user', text, { turnId });
+    if (appended) this.onTranscriptAppended(this.estimateTranscriptLines(text));
     // Use immediate render for user input to show it right away
     this.renderScreen();
     this.opts.onMessage(TERMINAL_GROUP_JID, {
@@ -821,10 +915,11 @@ class TerminalChannel implements Channel {
     }
 
     await this.opts.onResetSession?.(TERMINAL_GROUP_FOLDER);
+    this.setTranscriptOffset(0);
     clearConversationMessages(TERMINAL_GROUP_JID);
     this.lastAssistantMessageByJid.delete(TERMINAL_GROUP_JID);
     this.latestAssistantMessage = null;
-    this.latestSystemEvent = '已清空当前 terminal provider session';
+    this.setLatestSystemEvent('已清空当前 terminal provider session');
     resetTerminalObservability();
     clearTerminalEventLog();
     clearTerminalReplyLog();
@@ -838,24 +933,42 @@ class TerminalChannel implements Channel {
 
   private buildRenderProps(): Parameters<typeof TerminalApp>[0] {
     const busy = this.typingByJid.has(TERMINAL_GROUP_JID);
+    this.clearExpiredSystemNotice();
     const width = process.stdout.columns ?? 100;
+    const transcriptMaxLines = this.transcriptWindowLines();
+    const recentTranscript = terminalTranscriptTail(TERMINAL_TRANSCRIPT_LIMIT);
+    const latestTranscriptSystem = [...recentTranscript]
+      .reverse()
+      .find((entry) => entry.role === 'system')?.text;
+    const waitingForUser =
+      !busy &&
+      !this.hasActiveExecutions() &&
+      terminalTranscript.length > 0;
     return {
       backend: TERMINAL_GROUP_EXECUTION_MODE,
       busy,
       verbose: this.verbose,
       width,
       height: process.stdout.rows,
-      latestSystemEvent: this.latestSystemEvent,
+      transcriptOffset: this.transcriptOffset,
+      transcriptMaxLines,
+      latestSystemEvent:
+        this.latestSystemEvent && this.latestSystemEvent === latestTranscriptSystem
+          ? null
+          : this.latestSystemEvent,
       latestAssistantMessage: this.latestAssistantMessage,
       recentSystemEvents: terminalEventTail(4),
-      recentTranscript: terminalTranscriptTail(12),
+      recentTranscript,
       sidePanel: this.sidePanel,
       drawer: this.drawer,
       overlay: this.overlay,
+      waitingForUser,
       onSubmit: (text: string) => { void this.handleLine(text) },
       onEscape: () => { void this.handleInterrupt() },
       onShiftUp: () => { this.handleFocusCycle(-1) },
       onShiftDown: () => { this.handleFocusCycle(1) },
+      onPageUp: () => { this.scrollTranscriptPage(1) },
+      onPageDown: () => { this.scrollTranscriptPage(-1) },
       onCtrlO: () => { this.verbose = !this.verbose; this.renderScreen(); },
     };
   }
@@ -871,6 +984,16 @@ class TerminalChannel implements Channel {
         alternateScreen: true,
       });
     }
+  }
+
+  notifyTranscriptAppended(count = 1): void {
+    this.onTranscriptAppended(count);
+    this.renderScreen();
+  }
+
+  notifyTranscriptAppendedForText(text: string): void {
+    this.onTranscriptAppended(this.estimateTranscriptLines(text));
+    this.renderScreen();
   }
 
   private openSidePanel(tab: TerminalSidePanelTab, body: string): void {
@@ -930,7 +1053,10 @@ class TerminalChannel implements Channel {
 
     this.lastAssistantMessageByJid.set(jid, normalized);
     recordTerminalReply(normalized);
-    recordTerminalTranscript('assistant', normalized);
+    const appended = recordTerminalTranscript('assistant', normalized, {
+      turnId: currentTerminalTurnId(),
+    });
+    if (appended) this.onTranscriptAppended(this.estimateTranscriptLines(normalized));
     this.latestAssistantMessage = normalized;
     if (this.typingByJid.has(jid)) {
       this.typingByJid.delete(jid);
@@ -944,8 +1070,13 @@ class TerminalChannel implements Channel {
     if (!normalized) return;
 
     recordTerminalEvent(normalized);
-    recordTerminalTranscript('system', normalized);
-    this.latestSystemEvent = normalized;
+    if (!isExecutionLifecycleEvent(normalized)) {
+      const appended = recordTerminalTranscript('system', normalized, {
+        turnId: currentTerminalTurnId(),
+      });
+      if (appended) this.onTranscriptAppended(this.estimateTranscriptLines(normalized));
+    }
+    this.setLatestSystemEvent(normalized);
     this.renderScreen();
   }
 
@@ -955,7 +1086,7 @@ class TerminalChannel implements Channel {
     if (isTyping) {
       if (this.typingByJid.has(jid)) return;
       this.typingByJid.add(jid);
-      this.latestSystemEvent = '处理中…';
+      this.setLatestSystemEvent('处理中…');
       this.renderScreen();
       return;
     }
@@ -982,7 +1113,7 @@ class TerminalChannel implements Channel {
     this.connected = false;
     this.lastAssistantMessageByJid.clear();
     this.typingByJid.clear();
-    this.latestSystemEvent = null;
+    this.setLatestSystemEvent(null);
     this.latestAssistantMessage = null;
     this.sidePanel = { isOpen: false, tab: 'turn', body: null };
     this.drawer = { isOpen: false, tab: 'logs', body: null };
@@ -1006,9 +1137,14 @@ export function emitTerminalToolEvent(
 ): import('../terminal/terminal-panel.js').TerminalPanelTranscriptEntry | null {
   if (!activeTerminalChannel?.ownsJid(jid)) return null;
   const normalized = text.trim();
-  recordTerminalEvent(normalized || `tool: ${toolData.tool}`);
-  const entry = recordTerminalToolEntry(normalized, toolData);
-  activeTerminalChannel['renderScreen']();
+  const normalizedTool = normalizeToolTranscriptEntry({
+    ...toolData,
+    order: toolData.order ?? ++terminalToolOrder,
+    turnId: toolData.turnId ?? currentTerminalTurnId(),
+  });
+  recordTerminalEvent(normalized || `tool: ${normalizedTool.tool}`);
+  const entry = recordTerminalToolEntry(normalized, normalizedTool);
+  activeTerminalChannel.notifyTranscriptAppendedForText(normalized || `tool: ${normalizedTool.tool}`);
   return entry;
 }
 

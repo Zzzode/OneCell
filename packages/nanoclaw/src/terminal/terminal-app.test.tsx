@@ -35,4 +35,21 @@ describe('TerminalApp', () => {
     )
     expect(output).toContain('hello world')
   })
+
+  it('renders waiting banner and status notice', () => {
+    const output = renderToString(
+      <TerminalApp
+        backend="edge"
+        busy={false}
+        waitingForUser
+        latestSystemEvent="等待输入"
+        recentTranscript={[]}
+        sidePanel={{ isOpen: false, tab: '', body: null }}
+        drawer={{ isOpen: false, tab: '', body: null }}
+        overlay={{ kind: null, body: null }}
+      />,
+    )
+    expect(output).toContain('waiting for your input')
+    expect(output).toContain('等待输入')
+  })
 })

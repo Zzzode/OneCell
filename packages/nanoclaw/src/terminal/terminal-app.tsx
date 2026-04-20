@@ -50,9 +50,12 @@ interface TerminalAppProps {
   latestAssistantMessage?: string | null
   recentSystemEvents?: string[]
   recentTranscript?: TerminalPanelTranscriptEntry[]
+  transcriptOffset?: number
+  transcriptMaxLines?: number
   sidePanel?: { isOpen: boolean; tab: string; body: string | null }
   drawer?: { isOpen: boolean; tab: string; body: string | null }
   overlay?: { kind: string | null; body: string | null }
+  waitingForUser?: boolean
   chatJid?: string
   width?: number
   height?: number
@@ -62,16 +65,22 @@ interface TerminalAppProps {
   onShiftUp?: () => void
   onShiftDown?: () => void
   onCtrlO?: () => void
+  onPageUp?: () => void
+  onPageDown?: () => void
 }
 
 export function TerminalApp({
   backend,
   busy,
+  latestSystemEvent,
   verbose,
   recentTranscript = [],
+  transcriptOffset = 0,
+  transcriptMaxLines,
   sidePanel,
   drawer,
   overlay,
+  waitingForUser = false,
   width = 100,
   height,
   onSubmit,
@@ -79,6 +88,8 @@ export function TerminalApp({
   onShiftUp,
   onShiftDown,
   onCtrlO,
+  onPageUp,
+  onPageDown,
 }: TerminalAppProps) {
   const [inputValue, setInputValue] = useState('')
 
@@ -94,7 +105,13 @@ export function TerminalApp({
     <Box flexDirection="column" width={width} {...(height ? { height } : {})}>
       {/* Scrollable transcript area — takes remaining vertical space */}
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
-        <Transcript entries={recentTranscript} width={width} verbose={verbose} />
+        <Transcript
+          entries={recentTranscript}
+          width={width}
+          maxLines={transcriptMaxLines}
+          offset={transcriptOffset}
+          verbose={verbose}
+        />
 
         {sidePanel?.isOpen && sidePanel.body && (
           <Box flexDirection="column" marginTop={1}>
@@ -132,11 +149,15 @@ export function TerminalApp({
       {busy && (
         <Box marginTop={1} gap={1}>
           <Spinner />
-          <Text dimColor>thinking...</Text>
+          <Text color={theme.statusBusy}>thinking...</Text>
+        </Box>
+      )}
+      {waitingForUser && !busy && (
+        <Box marginTop={1}>
+          <Text color={theme.statusWaiting}>waiting for your input...</Text>
         </Box>
       )}
 
-      {/* Input box: top+bottom border only, pinned at bottom */}
       <Box
         flexDirection="column"
         borderColor={theme.border}
@@ -153,6 +174,8 @@ export function TerminalApp({
           onShiftUp={onShiftUp}
           onShiftDown={onShiftDown}
           onCtrlO={onCtrlO}
+          onPageUp={onPageUp}
+          onPageDown={onPageDown}
           busy={busy}
           placeholder={busy ? 'processing...' : 'Type your message...'}
         />
@@ -162,7 +185,9 @@ export function TerminalApp({
       <FooterBar
         backend={backend}
         agentCount={0}
-        runningCount={0}
+        runningCount={busy ? 1 : 0}
+        waitingForUser={waitingForUser}
+        transientNotice={latestSystemEvent ?? null}
       />
     </Box>
   )

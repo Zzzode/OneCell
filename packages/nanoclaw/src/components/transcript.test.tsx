@@ -36,6 +36,27 @@ describe('Transcript', () => {
     expect(output).toContain('I will analyze')
   })
 
+  it('merges assistant streaming chunks in the same turn', () => {
+    const entries: TerminalPanelTranscriptEntry[] = [
+      {
+        at: '2026-04-13T14:30:01Z',
+        role: 'assistant',
+        text: 'chunk 1',
+        turnId: 'turn:1',
+      },
+      {
+        at: '2026-04-13T14:30:02Z',
+        role: 'assistant',
+        text: 'chunk 2',
+        turnId: 'turn:1',
+      },
+    ]
+    const output = renderToString(<Transcript entries={entries} width={80} />)
+    const plain = output.replace(/\x1b\[[0-9;]*m/g, '')
+    expect(plain).toContain('chunk 1')
+    expect(plain).toContain('chunk 2')
+  })
+
   it('renders system entries as indented steps', () => {
     const entries: TerminalPanelTranscriptEntry[] = [
       { at: '2026-04-13T14:30:02Z', role: 'system', text: 'reading auth.ts' },
@@ -86,8 +107,8 @@ describe('Transcript', () => {
   })
 })
 
-describe('Transcript collapsed mode (verbose=false)', () => {
-  it('aggregates consecutive tool entries into one summary line', () => {
+describe('Transcript standard mode (verbose=false)', () => {
+  it('renders each tool call as an independent line', () => {
     const entries: TerminalPanelTranscriptEntry[] = [
       toolEntry('workspace.read', { path: 'src/a.ts' }),
       toolEntry('workspace.read', { path: 'src/b.ts' }),
@@ -97,12 +118,13 @@ describe('Transcript collapsed mode (verbose=false)', () => {
       <Transcript entries={entries} width={100} />,
     );
     const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
-    expect(plain).toContain('Read 2 files');
-    expect(plain).toContain('searched 1 pattern');
-    expect(plain).toContain('ctrl+o to expand');
+    expect(plain).toContain('Reading src/a.ts');
+    expect(plain).toContain('Reading src/b.ts');
+    expect(plain).toContain('Searching "ExecutionEvent"');
+    expect(plain).not.toContain('ctrl+o to expand');
   });
 
-  it('shows present progressive for running tools', () => {
+  it('renders running tools without aggregation', () => {
     const entries: TerminalPanelTranscriptEntry[] = [
       toolEntry('workspace.read', { path: 'src/a.ts' }, {
         toolData: { tool: 'workspace.read', args: { path: 'src/a.ts' }, status: 'running' },
@@ -112,19 +134,7 @@ describe('Transcript collapsed mode (verbose=false)', () => {
       <Transcript entries={entries} width={100} />,
     );
     const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
-    expect(plain).toContain('...');
-  });
-
-  it('shows single count without pluralization', () => {
-    const entries: TerminalPanelTranscriptEntry[] = [
-      toolEntry('workspace.read', { path: 'src/a.ts' }),
-    ];
-    const output = renderToString(
-      <Transcript entries={entries} width={100} />,
-    );
-    const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
-    expect(plain).toContain('Read 1 file');
-    expect(plain).not.toContain('Read 1 files');
+    expect(plain).toContain('Reading src/a.ts');
   });
 
   it('handles mixed system and tool entries', () => {
@@ -137,7 +147,39 @@ describe('Transcript collapsed mode (verbose=false)', () => {
     );
     const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
     expect(plain).toContain('execution started');
-    expect(plain).toContain('Read 1 file');
+    expect(plain).toContain('Reading src/a.ts');
+  });
+
+  it('renders tool entries deterministically by order', () => {
+    const entries: TerminalPanelTranscriptEntry[] = [
+      {
+        at: '2026-04-14T12:00:01.000Z',
+        role: 'tool',
+        text: 'workspace.search(pattern)',
+        toolData: {
+          tool: 'workspace.search',
+          args: { pattern: 'x' },
+          status: 'success',
+          order: 2,
+        },
+      },
+      {
+        at: '2026-04-14T12:00:00.000Z',
+        role: 'tool',
+        text: 'workspace.read(a.ts)',
+        toolData: {
+          tool: 'workspace.read',
+          args: { path: 'a.ts' },
+          status: 'success',
+          order: 1,
+        },
+      },
+    ];
+    const output = renderToString(
+      <Transcript entries={entries} width={100} verbose />,
+    );
+    const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
+    expect(plain.indexOf('Reading a.ts')).toBeLessThan(plain.indexOf('Searching "x"'));
   });
 });
 
@@ -165,8 +207,8 @@ describe('Transcript verbose mode (verbose=true)', () => {
       <Transcript entries={entries} width={100} verbose />,
     );
     const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
-    expect(plain).toContain('Read src/config.ts');
-    expect(plain).toContain('js.exec');
+    expect(plain).toContain('Reading src/config.ts');
+    expect(plain).toContain('Executing JavaScript(return 1 + 1)');
     expect(plain).not.toContain('ctrl+o to expand');
   });
 
@@ -198,7 +240,7 @@ describe('Transcript verbose mode (verbose=true)', () => {
     );
     const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
     expect(plain).toContain('list files');
-    expect(plain).toContain('Read src/a.ts');
+    expect(plain).toContain('Reading src/a.ts');
     expect(plain).toContain('Here are the files');
   });
 })

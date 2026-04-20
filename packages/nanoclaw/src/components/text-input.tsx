@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { getTheme, resolveTheme } from '../infra/theme.js'
 
@@ -17,6 +17,10 @@ interface TextInputProps {
   onShiftDown?: () => void
   /** Called on Ctrl+O (verbose toggle) */
   onCtrlO?: () => void
+  /** Called on PageUp */
+  onPageUp?: () => void
+  /** Called on PageDown */
+  onPageDown?: () => void
   /** Whether the app is busy processing */
   busy?: boolean
   /** External value override — when set, the component is controlled */
@@ -25,6 +29,8 @@ interface TextInputProps {
   onChange?: (value: string) => void
 }
 
+type InputMode = 'normal' | 'command'
+
 export function TextInput({
   placeholder = 'Type your message...',
   onSubmit,
@@ -32,12 +38,16 @@ export function TextInput({
   onShiftUp,
   onShiftDown,
   onCtrlO,
+  onPageUp,
+  onPageDown,
   busy = false,
   value: externalValue,
   onChange,
 }: TextInputProps) {
   const [internalValue, setInternalValue] = useState('')
   const [cursorOffset, setCursorOffset] = useState(0)
+  const [mode, setMode] = useState<InputMode>('normal')
+  const [pasteNotice, setPasteNotice] = useState<string | null>(null)
 
   const value = externalValue !== undefined ? externalValue : internalValue
   const setValue = useCallback(
@@ -51,15 +61,42 @@ export function TextInput({
     [externalValue, onChange],
   )
 
-  // ESC and Shift+Arrow must work even when busy (for interrupting/focusing)
+  useEffect(() => {
+    if (!pasteNotice) return
+    const timer = setTimeout(() => setPasteNotice(null), 1200)
+    return () => clearTimeout(timer)
+  }, [pasteNotice])
+
+  const submitCurrentValue = useCallback(() => {
+    const text = mode === 'command' ? value.trim() : value
+    if (!text.trim()) return
+    onSubmit(text)
+    setValue('')
+    setCursorOffset(0)
+    setMode('normal')
+  }, [mode, onSubmit, setValue, value])
+
+  // ESC/scroll/focus hotkeys must work even when busy
   useInput(
     (input, key) => {
       if (key.ctrl && input === 'o') {
         onCtrlO?.()
         return
       }
+      if (key.ctrl && input === 'l') {
+        setMode((prev) => (prev === 'command' ? 'normal' : 'command'))
+        return
+      }
       if (key.escape) {
         onEscape()
+        return
+      }
+      if (key.pageUp) {
+        onPageUp?.()
+        return
+      }
+      if (key.pageDown) {
+        onPageDown?.()
         return
       }
       if (key.shift && key.upArrow) {
@@ -77,12 +114,15 @@ export function TextInput({
   useInput(
     (input, key) => {
       if (key.return) {
-        const trimmed = value.trim()
-        if (trimmed) {
-          onSubmit(trimmed)
-          setValue('')
-          setCursorOffset(0)
+        if (busy) return
+        if (key.shift) {
+          const before = value.slice(0, cursorOffset)
+          const after = value.slice(cursorOffset)
+          setValue(before + '\n' + after)
+          setCursorOffset(cursorOffset + 1)
+          return
         }
+        submitCurrentValue()
         return
       }
 
@@ -140,36 +180,75 @@ export function TextInput({
 
       // Printable character
       if (input.length > 0) {
+        if (input.length > 1 || input.includes('\n')) {
+          setPasteNotice('pasted content detected · shift+enter inserts newline')
+        }
         const before = value.slice(0, cursorOffset)
         const after = value.slice(cursorOffset)
-        setValue(before + input + after)
+        const nextValue = before + input + after
+        setValue(nextValue)
         setCursorOffset(cursorOffset + input.length)
+        setMode(nextValue.startsWith('/') ? 'command' : 'normal')
       }
     },
     { isActive: !busy },
   )
 
-  // Build display with cursor indicator
-  const beforeCursor = value.slice(0, cursorOffset)
-  const atCursor = value.slice(cursorOffset, cursorOffset + 1)
-  const afterCursor = value.slice(cursorOffset + 1)
+  // Render only the active logical line for stable input UX with long multiline content.
+  const safeCursorOffset = Math.min(Math.max(0, cursorOffset), value.length)
+  const lineStart = value.lastIndexOf('\n', Math.max(0, safeCursorOffset - 1)) + 1
+  const lineEnd = (() => {
+    const idx = value.indexOf('\n', safeCursorOffset)
+    return idx === -1 ? value.length : idx
+  })()
+  const activeLine = value.slice(lineStart, lineEnd)
+  const cursorInLine = safeCursorOffset - lineStart
+
+  const previewMax = 96
+  let windowStart = Math.max(0, cursorInLine - Math.floor(previewMax / 2))
+  let windowEnd = Math.min(activeLine.length, windowStart + previewMax)
+  if (windowEnd - windowStart < previewMax) {
+    windowStart = Math.max(0, windowEnd - previewMax)
+  }
+
+  const clippedLeft = windowStart > 0
+  const clippedRight = windowEnd < activeLine.length
+  const visibleLine = activeLine.slice(windowStart, windowEnd)
+  const visibleCursor = cursorInLine - windowStart
+  const beforeCursor = visibleLine.slice(0, visibleCursor)
+  const atCursor = visibleLine.slice(visibleCursor, visibleCursor + 1)
+  const afterCursor = visibleLine.slice(visibleCursor + 1)
+
+  const totalLines = value.length === 0 ? 1 : value.split('\n').length
+  const currentLine = value.slice(0, safeCursorOffset).split('\n').length
 
   return (
-    <Box>
-      <Text color={theme.text} dimColor={busy}>{'❯'} </Text>
-      {busy ? (
-        <Text color={theme.subtle}>{placeholder}</Text>
-      ) : value.length === 0 ? (
-        <Text color={theme.subtle}>{placeholder}</Text>
-      ) : (
-        <Text>
-          <Text color={theme.text}>{beforeCursor}</Text>
-          <Text color={theme.text} inverse>
-            {atCursor || ' '}
+    <Box flexDirection="column">
+      <Box>
+        <Text color={theme.inputPrompt} dimColor={busy}>{'❯'} </Text>
+        {busy ? (
+          <Text color={theme.inputHint}>{placeholder}</Text>
+        ) : value.length === 0 ? (
+          <Text color={theme.inputHint}>{placeholder}</Text>
+        ) : (
+          <Text>
+            <Text color={theme.textMuted}>{clippedLeft ? '…' : ''}{beforeCursor}</Text>
+            <Text color={theme.text} inverse>
+              {atCursor || ' '}
+            </Text>
+            <Text color={theme.textMuted}>{afterCursor}{clippedRight ? '…' : ''}</Text>
           </Text>
-          <Text color={theme.text}>{afterCursor}</Text>
+        )}
+      </Box>
+      <Box>
+        <Text color={theme.inputHint}>
+          enter send · shift+enter newline · ctrl+l command
         </Text>
-      )}
+      </Box>
+      {totalLines > 1 && !busy ? (
+        <Text color={theme.inputHint}>{`editing line ${currentLine}/${totalLines}`}</Text>
+      ) : null}
+      {pasteNotice ? <Text color={theme.inputPasteNotice}>{pasteNotice}</Text> : null}
     </Box>
   )
 }

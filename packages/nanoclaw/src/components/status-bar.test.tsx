@@ -19,12 +19,29 @@ describe('FooterBar', () => {
     expect(output).toContain('1 running')
   })
 
-  it('omits agent and running count when 0', () => {
+  it('shows waiting state when idle', () => {
     const output = renderToString(
-      <FooterBar backend="edge" agentCount={0} runningCount={0} />,
+      <FooterBar backend="edge" agentCount={0} runningCount={0} waitingForUser />,
     )
-    expect(output).toContain('edge')
-    expect(output).not.toContain('0 agents')
-    expect(output).not.toContain('0 running')
+    expect(output).toContain('waiting for input')
+  })
+
+  it('shows idle state when not waiting', () => {
+    const output = renderToString(
+      <FooterBar backend="edge" agentCount={0} runningCount={0} waitingForUser={false} />,
+    )
+    expect(output).toContain('idle')
+  })
+
+  it('renders transient notice when present', () => {
+    const output = renderToString(
+      <FooterBar
+        backend="edge"
+        agentCount={0}
+        runningCount={0}
+        transientNotice="processing started"
+      />,
+    )
+    expect(output).toContain('processing started')
   })
 })

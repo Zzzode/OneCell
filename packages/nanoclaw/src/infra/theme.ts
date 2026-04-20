@@ -7,10 +7,22 @@ export type NanoClawTheme = {
   error: string;
   warning: string;
   text: string;
+  textMuted: string;
   inactive: string;
   subtle: string;
   suggestion: string;
   border: string;
+  statusInfo: string;
+  statusBusy: string;
+  statusWaiting: string;
+  inputPrompt: string;
+  inputHint: string;
+  inputMode: string;
+  inputPasteNotice: string;
+  userBubble: string;
+  assistantBubble: string;
+  toolBubble: string;
+  toolStepPrefix: string;
   agentRed: string;
   agentBlue: string;
   agentGreen: string;
@@ -32,10 +44,22 @@ const darkTheme: NanoClawTheme = {
   error: 'rgb(255,107,128)',
   warning: 'rgb(255,193,7)',
   text: 'rgb(255,255,255)',
+  textMuted: 'rgb(214,214,214)',
   inactive: 'rgb(153,153,153)',
   subtle: 'rgb(80,80,80)',
   suggestion: 'rgb(177,185,249)',
   border: 'rgb(80,80,80)',
+  statusInfo: 'rgb(153,153,153)',
+  statusBusy: 'rgb(255,193,7)',
+  statusWaiting: 'rgb(177,185,249)',
+  inputPrompt: 'rgb(255,255,255)',
+  inputHint: 'rgb(153,153,153)',
+  inputMode: 'rgb(177,185,249)',
+  inputPasteNotice: 'rgb(255,193,7)',
+  userBubble: 'rgb(235,159,127)',
+  assistantBubble: 'rgb(255,255,255)',
+  toolBubble: 'rgb(153,153,153)',
+  toolStepPrefix: 'rgb(80,80,80)',
   agentRed: 'rgb(220,38,38)',
   agentBlue: 'rgb(37,99,235)',
   agentGreen: 'rgb(22,163,74)',
@@ -55,10 +79,22 @@ const lightTheme: NanoClawTheme = {
   error: 'rgb(171,43,63)',
   warning: 'rgb(150,108,30)',
   text: 'rgb(0,0,0)',
+  textMuted: 'rgb(38,38,38)',
   inactive: 'rgb(102,102,102)',
   subtle: 'rgb(175,175,175)',
   suggestion: 'rgb(87,105,247)',
   border: 'rgb(175,175,175)',
+  statusInfo: 'rgb(102,102,102)',
+  statusBusy: 'rgb(150,108,30)',
+  statusWaiting: 'rgb(87,105,247)',
+  inputPrompt: 'rgb(0,0,0)',
+  inputHint: 'rgb(102,102,102)',
+  inputMode: 'rgb(87,105,247)',
+  inputPasteNotice: 'rgb(150,108,30)',
+  userBubble: 'rgb(245,149,117)',
+  assistantBubble: 'rgb(0,0,0)',
+  toolBubble: 'rgb(102,102,102)',
+  toolStepPrefix: 'rgb(175,175,175)',
   agentRed: 'rgb(220,38,38)',
   agentBlue: 'rgb(37,99,235)',
   agentGreen: 'rgb(22,163,74)',

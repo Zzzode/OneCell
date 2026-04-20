@@ -184,6 +184,18 @@ function pressShiftDown(): void {
   onShiftDown?.();
 }
 
+function pressPageUp(): void {
+  const props = inkHarness.getLastProps();
+  const onPageUp = props.onPageUp as (() => void) | undefined;
+  onPageUp?.();
+}
+
+function pressPageDown(): void {
+  const props = inkHarness.getLastProps();
+  const onPageDown = props.onPageDown as (() => void) | undefined;
+  onPageDown?.();
+}
+
 describe('terminal ui helpers', () => {
   beforeEach(() => {
     inkHarness.reset();
@@ -1170,6 +1182,153 @@ describe('terminal ui helpers', () => {
     }
   });
 
+  it('supports transcript scrollback via page up/down callbacks', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      for (let i = 1; i <= 20; i += 1) {
+        const label = String(i).padStart(2, '0');
+        submitLine(`scroll line [${label}]`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const latestFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(latestFrame).toContain('scroll line [20]');
+      expect(latestFrame).not.toContain('scroll line [01]');
+
+      pressPageUp();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const scrolledUpFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(scrolledUpFrame).toContain('scroll line [10]');
+      expect(scrolledUpFrame).not.toContain('scroll line [20]');
+
+      pressPageUp();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      pressPageUp();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const scrolledTopFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(scrolledTopFrame).toContain('scroll line [01]');
+      expect(scrolledTopFrame).not.toContain('scroll line [20]');
+
+      pressPageDown();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      pressPageDown();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      pressPageDown();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const scrolledDownFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(scrolledDownFrame).toContain('scroll line [20]');
+      expect(scrolledDownFrame).not.toContain('scroll line [01]');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('keeps viewport anchored while new transcript arrives during scrollback', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      for (let i = 1; i <= 20; i += 1) {
+        const label = String(i).padStart(2, '0');
+        submitLine(`anchor line [${label}]`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      pressPageUp();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      submitLine('anchor line [21]');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const anchoredFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(anchoredFrame).toContain('anchor line [10]');
+      expect(anchoredFrame).not.toContain('anchor line [21]');
+
+      pressPageDown();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      pressPageDown();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const backToBottomFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(backToBottomFrame).toContain('anchor line [21]');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('resets scrollback offset after `/new`', async () => {
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      const factory = getChannelFactory('terminal');
+      const channel = factory!({
+        onMessage: vi.fn(),
+        onChatMetadata: vi.fn(),
+        onResetSession: vi.fn(),
+        registeredGroups: () => ({}),
+      });
+
+      expect(channel).not.toBeNull();
+      await channel!.connect();
+
+      for (let i = 1; i <= 20; i += 1) {
+        const label = String(i).padStart(2, '0');
+        submitLine(`reset line [${label}]`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      pressPageUp();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      submitLine('/new');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      submitLine('reset line [after-new]');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const finalFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '');
+      expect(finalFrame).toContain('reset line [after-new]');
+      expect(finalFrame).not.toContain('reset line [01]');
+
+      await channel!.disconnect();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
   it('renders `/help` as a grouped overlay with concise terminal wording', async () => {
     const writeSpy = vi
       .spyOn(process.stdout, 'write')
@@ -1539,24 +1698,25 @@ describe('terminal ui helpers', () => {
       expect(channel).not.toBeNull();
       await channel!.connect();
 
-      // Simulate a tool event
+      // Simulate a js tool event with multi-line code (only shown in verbose mode)
       emitTerminalToolEvent(
         'term:canary-group',
-        'workspace.read(src/config.ts)',
+        'js.exec(return 1 + 1)',
         {
-          tool: 'workspace.read',
-          args: { path: 'src/config.ts' },
+          tool: 'js.exec',
+          args: { code: 'const x = 1\nreturn x + 1' },
+          result: { value: 2 },
           status: 'success',
         },
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      // Before toggle: should show collapsed summary
       const beforeFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
         /\x1b\[[0-9;]*m/g,
         '',
       );
-      expect(beforeFrame).toContain('ctrl+o to expand');
+      expect(beforeFrame).toContain('Executing JavaScript(const x = 1 return x + 1)');
+      expect(beforeFrame).not.toContain('  ⎿ const x = 1');
 
       // Press ctrl+o
       const props = inkHarness.getLastProps();
@@ -1565,13 +1725,14 @@ describe('terminal ui helpers', () => {
       onCtrlO!();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      // After toggle: should show verbose details
+      // After toggle: should include verbose code details
       const afterFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
         /\x1b\[[0-9;]*m/g,
         '',
       );
-      expect(afterFrame).toContain('src/config.ts');
-      expect(afterFrame).not.toContain('ctrl+o to expand');
+      expect(afterFrame).toContain('Executing JavaScript(const x = 1 return x + 1)');
+      expect(afterFrame).toContain('const x = 1');
+      expect(afterFrame).toContain('return x + 1');
 
       await channel!.disconnect();
     } finally {

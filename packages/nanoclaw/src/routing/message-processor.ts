@@ -20,6 +20,7 @@ import { findChannel, formatMessages } from './router.js';
 import { getOrRecoverCursor, saveState } from './router-state.js';
 import type { Channel, NewMessage, RegisteredGroup } from '../types.js';
 import type { GroupQueue } from '../infra/group-queue.js';
+import { emitTerminalSystemEvent } from '../channels/terminal.js';
 
 interface MessageProcessorState {
   channels: Channel[];
@@ -43,6 +44,68 @@ interface MessageProcessorState {
 }
 
 let state: MessageProcessorState;
+
+const MAX_IDENTICAL_RETRY_ATTEMPTS = 2;
+const RETRY_GUARD_TTL_MS = 5 * 60 * 1000;
+const RETRY_HINT =
+  '\n\n[retry-hint] The previous attempt failed. First analyze why it failed. Avoid repeating the exact same tool call with the same arguments. Choose a revised strategy before invoking tools. [/retry-hint]';
+
+interface RetryGuardState {
+  promptHash: string;
+  failuresWithoutOutput: number;
+  lastFailureAt: number;
+}
+
+const retryGuards = new Map<string, RetryGuardState>();
+
+function hashPrompt(prompt: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < prompt.length; i++) {
+    hash ^= prompt.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function buildRunPrompt(chatJid: string, prompt: string): string {
+  const hash = hashPrompt(prompt);
+  const guard = retryGuards.get(chatJid);
+  if (!guard) return prompt;
+  if (Date.now() - guard.lastFailureAt > RETRY_GUARD_TTL_MS) {
+    retryGuards.delete(chatJid);
+    return prompt;
+  }
+  if (guard.promptHash !== hash || guard.failuresWithoutOutput === 0) {
+    return prompt;
+  }
+  return `${prompt}${RETRY_HINT}`;
+}
+
+function recordRetryFailure(chatJid: string, prompt: string): number {
+  const promptHash = hashPrompt(prompt);
+  const prev = retryGuards.get(chatJid);
+  const failuresWithoutOutput =
+    prev && prev.promptHash === promptHash ? prev.failuresWithoutOutput + 1 : 1;
+  retryGuards.set(chatJid, {
+    promptHash,
+    failuresWithoutOutput,
+    lastFailureAt: Date.now(),
+  });
+  return failuresWithoutOutput;
+}
+
+function clearRetryFailure(chatJid: string): void {
+  retryGuards.delete(chatJid);
+}
+
+export function resetMessageProcessorRetryGuardsForTests(): void {
+  retryGuards.clear();
+}
 
 export function initMessageProcessor(deps: MessageProcessorState): void {
   state = deps;
@@ -86,6 +149,7 @@ export async function processGroupMessages(chatJid: string): Promise<boolean> {
   }
 
   const prompt = formatMessages(missedMessages, TIMEZONE);
+  const runPrompt = buildRunPrompt(chatJid, prompt);
 
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
@@ -120,7 +184,7 @@ export async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const output = await state.runAgent(
     group,
-    prompt,
+    runPrompt,
     chatJid,
     async (result) => {
       // Streaming output callback — called for each agent result
@@ -164,22 +228,36 @@ export async function processGroupMessages(chatJid: string): Promise<boolean> {
     // If we already sent output to the user, don't roll back the cursor —
     // the user got their response and re-processing would send duplicates.
     if (outputSentToUser) {
+      clearRetryFailure(chatJid);
       logger.warn(
         { group: group.name },
         'Agent error after output was sent, skipping cursor rollback to prevent duplicates',
       );
       return true;
     }
+
+    const retryCount = recordRetryFailure(chatJid, prompt);
+    if (retryCount > MAX_IDENTICAL_RETRY_ATTEMPTS) {
+      const notice = `重复失败已达上限（${MAX_IDENTICAL_RETRY_ATTEMPTS} 次），停止自动重试，请调整策略后重试。`;
+      emitTerminalSystemEvent(chatJid, notice);
+      logger.error(
+        { group: group.name, retryCount, promptHash: hashPrompt(prompt) },
+        'Stopped automatic retry due to repeated identical failures',
+      );
+      return true;
+    }
+
     // Roll back cursor so retries can re-process these messages
     state.lastAgentTimestamp[chatJid] = previousCursor;
     saveState();
     logger.warn(
-      { group: group.name },
+      { group: group.name, retryCount, promptHash: hashPrompt(prompt) },
       'Agent error, rolled back message cursor for retry',
     );
     return false;
   }
 
+  clearRetryFailure(chatJid);
   return true;
 }
 
