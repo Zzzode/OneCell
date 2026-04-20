@@ -2416,7 +2416,19 @@ DEFINE_RAW_NODE_TEST(RawNetListeningParallelFromNodeTest, "parallel/test-net-lis
 DEFINE_RAW_NODE_TEST(RawNetLocalAddressPortParallelFromNodeTest, "parallel/test-net-local-address-port.js")
 DEFINE_RAW_NODE_TEST(RawNetLocalerrorParallelFromNodeTest, "parallel/test-net-localerror.js")
 DEFINE_RAW_NODE_TEST(RawNetNormalizeArgsParallelFromNodeTest, "parallel/test-net-normalize-args.js")
-DEFINE_RAW_NODE_TEST(RawNetOnreadStaticBufferParallelFromNodeTest, "parallel/test-net-onread-static-buffer.js")
+// TODO: DNS resolution for localhost flakes on macOS CI (EAI_CANCELED).
+TEST_F(Test3NodeDropinSubsetPhase02, RawNetOnreadStaticBufferParallelFromNodeTest) {
+#if defined(__APPLE__)
+  if (std::getenv("CI") != nullptr) {
+    GTEST_SKIP() << "net onread-static-buffer flakes on macOS CI (DNS EAI_CANCELED)";
+  }
+#endif
+  std::string error;
+  const int exit_code =
+      RunRawNodeTestScriptInSubprocess("parallel/test-net-onread-static-buffer.js", &error);
+  EXPECT_EQ(exit_code, 0) << "error=" << error;
+  EXPECT_TRUE(error.empty()) << "error=" << error;
+}
 DEFINE_RAW_NODE_TEST(RawNetOptionsLookupParallelFromNodeTest, "parallel/test-net-options-lookup.js")
 // TODO: DNS resolution for localhost flakes on CI (EAI_CANCELED).
 TEST_F(Test3NodeDropinSubsetPhase02, RawNetPauseResumeConnectingParallelFromNodeTest) {
@@ -2454,7 +2466,19 @@ DEFINE_RAW_NODE_TEST(RawNetServerListenPathParallelFromNodeTest, "parallel/test-
 DEFINE_RAW_NODE_TEST(RawNetServerListenRemoveCallbackParallelFromNodeTest, "parallel/test-net-server-listen-remove-callback.js")
 DEFINE_RAW_NODE_TEST(RawNetServerMaxConnectionsCloseMakesMoreAvailableParallelFromNodeTest, "parallel/test-net-server-max-connections-close-makes-more-available.js")
 DEFINE_RAW_NODE_TEST(RawNetServerMaxConnectionsParallelFromNodeTest, "parallel/test-net-server-max-connections.js")
-DEFINE_RAW_NODE_TEST(RawNetServerNodelayParallelFromNodeTest, "parallel/test-net-server-nodelay.js")
+// TODO: DNS resolution for localhost flakes on macOS CI (EAI_CANCELED).
+TEST_F(Test3NodeDropinSubsetPhase02, RawNetServerNodelayParallelFromNodeTest) {
+#if defined(__APPLE__)
+  if (std::getenv("CI") != nullptr) {
+    GTEST_SKIP() << "net server-nodelay flakes on macOS CI (DNS EAI_CANCELED)";
+  }
+#endif
+  std::string error;
+  const int exit_code =
+      RunRawNodeTestScriptInSubprocess("parallel/test-net-server-nodelay.js", &error);
+  EXPECT_EQ(exit_code, 0) << "error=" << error;
+  EXPECT_TRUE(error.empty()) << "error=" << error;
+}
 DEFINE_RAW_NODE_TEST(RawNetServerOptionsParallelFromNodeTest, "parallel/test-net-server-options.js")
 DEFINE_RAW_NODE_TEST(RawNetServerPauseOnConnectParallelFromNodeTest, "parallel/test-net-server-pause-on-connect.js")
 DEFINE_RAW_NODE_TEST(RawNetServerResetParallelFromNodeTest, "parallel/test-net-server-reset.js")
