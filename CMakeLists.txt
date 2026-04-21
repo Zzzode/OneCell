@@ -207,7 +207,7 @@ if(EDGE_NAPI_PROVIDER STREQUAL "bundled-v8")
         "Path to V8 headers" FORCE)
       set(NAPI_V8_LIBRARY "${_edge_repo_local_v8_library}" CACHE FILEPATH
         "Path to V8 runtime library (monolith/static/dynamic)" FORCE)
-      set(NAPI_V8_DEFINES "V8_COMPRESS_POINTERS" CACHE STRING
+      set(NAPI_V8_DEFINES "V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX" CACHE STRING
         "Semicolon-separated V8 embedder compile definitions" FORCE)
       if(APPLE)
         set(NAPI_V8_EXTRA_LIBS "/System/Library/Frameworks/CoreFoundation.framework" CACHE STRING

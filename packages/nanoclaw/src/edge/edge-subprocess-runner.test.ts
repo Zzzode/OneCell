@@ -139,8 +139,9 @@ describe.skipIf(!hasEdgejsBinary)('EdgeSubprocessRunner', () => {
       // resolveSafePackagePath checks build-wasix relative to nanoclaw root,
       // which resolves to packages/nanoclaw/../../build-wasix = build-wasix at
       // monorepo root. Stub the path resolution by ensuring the fake wasm is
-      // found at the expected location relative to the dist entry.
-      const monorepoRoot = path.resolve(path.dirname(distEntry), '..', '..');
+      // found at the actual repo root.
+      const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+      const monorepoRoot = path.resolve(testFileDir, '..', '..', '..', '..');
       const wasmAtRoot = path.join(monorepoRoot, 'build-wasix', 'edgejs.wasm');
       const hadWasmAtRoot = fs.existsSync(wasmAtRoot);
       if (!hadWasmAtRoot) {
@@ -155,7 +156,7 @@ describe.skipIf(!hasEdgejsBinary)('EdgeSubprocessRunner', () => {
         args: expect.arrayContaining([
           '--safe',
           '--wasmer-package',
-          'dist/edge-runner-cli.js',
+          'dist/edge/edge-runner-cli.js',
         ]),
       });
 
@@ -198,7 +199,7 @@ describe.skipIf(!hasEdgejsBinary)('EdgeSubprocessRunner', () => {
       const cmd = resolveRunnerCommand();
       expect(cmd).toMatchObject({
         command: fakeEdgeBin,
-        args: ['dist/edge-runner-cli.js'],
+        args: ['dist/edge/edge-runner-cli.js'],
       });
       expect(cmd.args).not.toContain('--safe');
     } finally {
