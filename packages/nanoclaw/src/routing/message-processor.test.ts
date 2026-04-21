@@ -50,8 +50,9 @@ vi.mock('../infra/sender-allowlist.js', () => ({
 }));
 
 vi.mock('./router.js', () => ({
-  findChannel: vi.fn((channels: Array<{ ownsJid: (jid: string) => boolean }>, jid: string) =>
-    channels.find((c) => c.ownsJid(jid)),
+  findChannel: vi.fn(
+    (channels: Array<{ ownsJid: (jid: string) => boolean }>, jid: string) =>
+      channels.find((c) => c.ownsJid(jid)),
   ),
   formatMessages: vi.fn(() => 'PROMPT_BASE'),
 }));
@@ -85,7 +86,9 @@ function makeMessage(overrides: Partial<NewMessage> = {}): NewMessage {
   };
 }
 
-function buildDeps(runAgentImpl: MessageProcessorDeps['runAgent']): MessageProcessorDeps {
+function buildDeps(
+  runAgentImpl: MessageProcessorDeps['runAgent'],
+): MessageProcessorDeps {
   const group: RegisteredGroup = {
     name: 'Group 1',
     folder: 'group_1',
@@ -153,9 +156,7 @@ describe('message-processor retry guard', () => {
   });
 
   it('stops automatic retry after bounded identical failures', async () => {
-    initMessageProcessor(
-      buildDeps(async () => 'error'),
-    );
+    initMessageProcessor(buildDeps(async () => 'error'));
 
     const first = await processGroupMessages('group-1');
     const second = await processGroupMessages('group-1');

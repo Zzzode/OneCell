@@ -144,7 +144,12 @@ function resolveWasmerCachePath(): string | null {
 
 export function resolveRunnerCommand(): RunnerCommand {
   const nanoclawRoot = resolveNanoclawRoot();
-  const distEntry = path.join(nanoclawRoot, 'dist', 'edge', 'edge-runner-cli.js');
+  const distEntry = path.join(
+    nanoclawRoot,
+    'dist',
+    'edge',
+    'edge-runner-cli.js',
+  );
   if (EDGE_RUNNER_MODE === 'edgejs') {
     const edgeBin = resolveEdgeJsBin();
     if (!edgeBin) {

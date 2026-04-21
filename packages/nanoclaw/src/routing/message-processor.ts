@@ -63,11 +63,7 @@ function hashPrompt(prompt: string): string {
   for (let i = 0; i < prompt.length; i++) {
     hash ^= prompt.charCodeAt(i);
     hash +=
-      (hash << 1) +
-      (hash << 4) +
-      (hash << 7) +
-      (hash << 8) +
-      (hash << 24);
+      (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
   return (hash >>> 0).toString(16);
 }

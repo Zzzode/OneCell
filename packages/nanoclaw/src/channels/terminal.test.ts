@@ -1699,23 +1699,21 @@ describe('terminal ui helpers', () => {
       await channel!.connect();
 
       // Simulate a js tool event with multi-line code (only shown in verbose mode)
-      emitTerminalToolEvent(
-        'term:canary-group',
-        'js.exec(return 1 + 1)',
-        {
-          tool: 'js.exec',
-          args: { code: 'const x = 1\nreturn x + 1' },
-          result: { value: 2 },
-          status: 'success',
-        },
-      );
+      emitTerminalToolEvent('term:canary-group', 'js.exec(return 1 + 1)', {
+        tool: 'js.exec',
+        args: { code: 'const x = 1\nreturn x + 1' },
+        result: { value: 2 },
+        status: 'success',
+      });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const beforeFrame = String(writeSpy.mock.calls.at(-1)?.[0] ?? '').replace(
         /\x1b\[[0-9;]*m/g,
         '',
       );
-      expect(beforeFrame).toContain('Executing JavaScript(const x = 1 return x + 1)');
+      expect(beforeFrame).toContain(
+        'Executing JavaScript(const x = 1 return x + 1)',
+      );
       expect(beforeFrame).not.toContain('  ⎿ const x = 1');
 
       // Press ctrl+o
@@ -1730,7 +1728,9 @@ describe('terminal ui helpers', () => {
         /\x1b\[[0-9;]*m/g,
         '',
       );
-      expect(afterFrame).toContain('Executing JavaScript(const x = 1 return x + 1)');
+      expect(afterFrame).toContain(
+        'Executing JavaScript(const x = 1 return x + 1)',
+      );
       expect(afterFrame).toContain('const x = 1');
       expect(afterFrame).toContain('return x + 1');
 
